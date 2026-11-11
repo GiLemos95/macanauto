@@ -2558,6 +2558,481 @@ renderFleet();
   renderOcorrencias();
 })();
 
+/* MACANAUTO v0.4.6 - CHECKLIST DETALHADO */
+(function iniciarChecklistDetalhado() {
+  if (document.getElementById('ck-v046')) return;
+
+  const CHAVE_VIAGENS = 'macanauto_demo_retiradas_v042';
+  const CHAVE_OCORRENCIAS = 'macanauto_demo_ocorrencias_v045';
+
+  const form = document.getElementById('vistoria-unificada');
+  const botaoAntigo = document.getElementById('vu-confirmar');
+  if (!form || !botaoAntigo) return;
+
+  const el = id => document.getElementById(id);
+
+  const ITENS = [
+    ['pneus', 'Pneus e estepe'],
+    ['farois', 'Faróis e iluminação dianteira'],
+    ['lanternas', 'Lanternas e luzes de freio'],
+    ['setas', 'Indicadores de direção'],
+    ['retrovisores', 'Retrovisores'],
+    ['parabrisa', 'Para-brisa e vidros'],
+    ['limpadores', 'Limpadores de para-brisa'],
+    ['lataria', 'Lataria e para-choques'],
+    ['interior', 'Condições internas e bancos'],
+    ['limpeza', 'Limpeza do veículo'],
+    ['equipamentos', 'Equipamentos obrigatórios'],
+    ['vazamentos', 'Ausência de vazamentos aparentes']
+  ];
+
+  // Oculta o campo simplificado da versao anterior.
+  const antigo = el('vu-checklist');
+  if (antigo) {
+    const caixa = antigo.closest('.field');
+    if (caixa) caixa.classList.add('hidden');
+  }
+
+  const painel = document.createElement('div');
+  painel.id = 'ck-v046';
+  painel.className = 'card';
+  painel.style.margin = '18px 0';
+  painel.style.background = '#faf8f5';
+
+  const titulo = document.createElement('h3');
+  titulo.textContent = 'Checklist detalhado do veículo';
+  titulo.style.color = '#522a00';
+
+  const descricao = document.createElement('p');
+  descricao.className = 'muted';
+  descricao.textContent =
+    'Avalie todos os itens. Não conformidades exigem descrição ' +
+    'e geram ocorrência bloqueante para avaliação.';
+
+  painel.append(titulo, descricao);
+
+  const linhas = [];
+
+  ITENS.forEach(([codigo, nome]) => {
+    const linha = document.createElement('div');
+    linha.className = 'field';
+    linha.style.padding = '12px 0';
+    linha.style.borderBottom = '1px solid #e9e4dc';
+
+    const rotulo = document.createElement('label');
+    rotulo.htmlFor = 'ck-' + codigo;
+    rotulo.textContent = nome;
+
+    const seletor = document.createElement('select');
+    seletor.id = 'ck-' + codigo;
+
+    [
+      ['', 'Selecione a condição'],
+      ['Conforme', 'Conforme'],
+      ['Não conforme', 'Não conforme'],
+      ['Não se aplica', 'Não se aplica']
+    ].forEach(([valor, texto]) => {
+      const opcao = document.createElement('option');
+      opcao.value = valor;
+      opcao.textContent = texto;
+      seletor.appendChild(opcao);
+    });
+
+    const justificativa = document.createElement('textarea');
+    justificativa.placeholder =
+      'Descreva a irregularidade identificada';
+    justificativa.rows = 2;
+    justificativa.maxLength = 1000;
+    justificativa.className = 'hidden';
+
+    seletor.addEventListener('change', () => {
+      justificativa.classList.toggle(
+        'hidden',
+        seletor.value !== 'Não conforme'
+      );
+    });
+
+    linha.append(rotulo, seletor, justificativa);
+    painel.appendChild(linha);
+
+    linhas.push({
+      codigo,
+      nome,
+      seletor,
+      justificativa
+    });
+  });
+
+  const observacao = document.createElement('p');
+  observacao.className = 'notice';
+  observacao.textContent =
+    'A ocorrência automática será registrada como aberta e ' +
+    'bloqueante. A liberação dependerá de sua resolução.';
+
+  painel.appendChild(observacao);
+  botaoAntigo.parentNode.insertBefore(painel, botaoAntigo);
+
+  // Remove o listener antigo para evitar registros duplicados.
+  const botaoNovo = botaoAntigo.cloneNode(true);
+  botaoAntigo.replaceWith(botaoNovo);
+
+  function ler(chave) {
+    const dados = JSON.parse(
+      localStorage.getItem(chave) || '[]'
+    );
+    if (!Array.isArray(dados)) {
+      throw new Error('Dados locais inválidos');
+    }
+    return dados;
+  }
+
+  function texto(id) {
+    return el(id).value.trim();
+  }
+
+  function resultado(mensagem) {
+    el('vu-resultado').textContent = mensagem;
+  }
+
+  function atualizarBotao() {
+    const tipo = el('vu-tipo').value;
+    const identificacao = el('vu-veiculo').value;
+    const veiculo = data.find(v => v[0] === identificacao);
+
+    botaoNovo.textContent = tipo === 'Devolução'
+      ? 'Confirmar devolução'
+      : 'Confirmar retirada';
+
+    botaoNovo.disabled = !veiculo ||
+      (tipo === 'Retirada' &&
+        veiculo[3] !== 'Disponível') ||
+      (tipo === 'Devolução' &&
+        veiculo[3] !== 'Em uso');
+  }
+
+  function limparFormulario() {
+    linhas.forEach(item => {
+      item.seletor.value = '';
+      item.justificativa.value = '';
+      item.justificativa.classList.add('hidden');
+    });
+
+    ['vu-km', 'vu-observacoes'].forEach(id => {
+      el(id).value = '';
+    });
+
+    el('vu-foto').value = '';
+    if (antigo) antigo.value = '';
+  }
+
+  botaoNovo.addEventListener('click', () => {
+    const tipo = el('vu-tipo').value;
+    const devolucao = tipo === 'Devolução';
+    const identificacao = el('vu-veiculo').value;
+    const indice = data.findIndex(
+      v => v[0] === identificacao
+    );
+
+    if (indice < 0) {
+      resultado('Veículo não encontrado.');
+      return;
+    }
+
+    const statusEsperado = devolucao
+      ? 'Em uso' : 'Disponível';
+
+    if (data[indice][3] !== statusEsperado) {
+      resultado('Operação não permitida para este veículo.');
+      return;
+    }
+
+    const kmTexto = texto('vu-km');
+    const km = Number(kmTexto);
+    const foto = el('vu-foto').files[0];
+
+    if (
+      kmTexto === '' ||
+      !Number.isSafeInteger(km) ||
+      km < 0
+    ) {
+      resultado('Informe uma quilometragem válida.');
+      return;
+    }
+
+    // Mantem a exigencia provisoria da versao anterior.
+    // A fotografia nao e armazenada.
+    if (!foto || !foto.type.startsWith('image/')) {
+      resultado('Selecione uma imagem de teste.');
+      return;
+    }
+
+    const pendentes = linhas.filter(
+      item => !item.seletor.value
+    );
+
+    if (pendentes.length) {
+      resultado(
+        'Avalie todos os itens do checklist. ' +
+        'Primeiro pendente: ' + pendentes[0].nome
+      );
+      pendentes[0].seletor.focus();
+      return;
+    }
+
+    const naoConformes = linhas.filter(
+      item => item.seletor.value === 'Não conforme'
+    );
+
+    const semDescricao = naoConformes.find(
+      item => !item.justificativa.value.trim()
+    );
+
+    if (semDescricao) {
+      resultado(
+        'Descreva a não conformidade: ' + semDescricao.nome
+      );
+      semDescricao.justificativa.focus();
+      return;
+    }
+
+    const checklist = linhas.map(item => ({
+      codigo: item.codigo,
+      item: item.nome,
+      condicao: item.seletor.value,
+      descricao: item.seletor.value === 'Não conforme'
+        ? item.justificativa.value.trim()
+        : ''
+    }));
+
+    const observacoes = texto('vu-observacoes');
+
+    let viagens, ocorrencias;
+
+    try {
+      viagens = ler(CHAVE_VIAGENS);
+      ocorrencias = ler(CHAVE_OCORRENCIAS);
+    } catch (erro) {
+      resultado('Erro ao consultar os registros locais.');
+      return;
+    }
+
+    const aberta = viagens.find(
+      r => r.veiculo === identificacao &&
+        r.situacao === 'Em uso'
+    );
+
+    let registro;
+
+    if (devolucao) {
+      if (!aberta) {
+        resultado('Não existe retirada aberta.');
+        return;
+      }
+
+      const kmInicial = Number(aberta.kmInicial);
+      if (!Number.isFinite(kmInicial) || km < kmInicial) {
+        resultado(
+          'A quilometragem final deve ser igual ou ' +
+          'superior à inicial.'
+        );
+        return;
+      }
+
+      const combustivel = el('vu-combustivel').value;
+      const justificativa = texto('vu-justificativa');
+
+      if (
+        combustivel === 'Nao cheio' &&
+        !justificativa
+      ) {
+        resultado(
+          'Justifique o tanque não estar cheio.'
+        );
+        return;
+      }
+
+      registro = {
+        ...aberta,
+        situacao: 'Devolvido',
+        kmFinal: km,
+        kmPercorridos: km - kmInicial,
+        combustivel,
+        justificativaCombustivel: justificativa,
+        observacoesDevolucao: observacoes,
+        checklistDevolucao: checklist,
+        dataDevolucao: new Date().toISOString()
+      };
+
+      viagens = viagens.map(
+        r => r === aberta ? registro : r
+      );
+    } else {
+      if (aberta) {
+        resultado('Já existe retirada aberta.');
+        return;
+      }
+
+      const motorista = texto('vu-motorista');
+      const destino = texto('vu-destino');
+      const finalidade = texto('vu-finalidade');
+
+      if (!motorista || !destino || !finalidade) {
+        resultado(
+          'Preencha motorista, destino e finalidade.'
+        );
+        return;
+      }
+
+      registro = {
+        id: 'DEMO-' + Date.now(),
+        veiculo: identificacao,
+        motorista,
+        destino,
+        finalidade,
+        kmInicial: km,
+        observacoes,
+        checklistRetirada: checklist,
+        fotoSelecionada: true,
+        dataRetirada: new Date().toISOString(),
+        situacao: 'Em uso'
+      };
+
+      viagens.push(registro);
+    }
+
+    const novasOcorrencias = naoConformes.map(item => ({
+      id: 'OC-CK-' + Date.now() + '-' + item.codigo,
+      veiculo: identificacao,
+      tipo: 'Irregularidade na vistoria',
+      gravidade: 'A avaliar',
+      bloqueia: true,
+      descricao: item.nome + ': ' +
+        item.justificativa.value.trim(),
+      responsavel: devolucao
+        ? 'Vistoria de devolução'
+        : 'Vistoria de retirada',
+      origemVistoria: registro.id,
+      situacao: 'Aberta',
+      dataRegistro: new Date().toISOString(),
+      dataResolucao: null,
+      solucao: null
+    }));
+
+    const mensagemConfirmacao =
+      'Confirmar ' + tipo.toLowerCase() + '?\n\n' +
+      'Veículo: ' + identificacao + '\n' +
+      'Odômetro: ' + km + ' km\n' +
+      'Não conformidades: ' + naoConformes.length +
+      '\n\n' +
+      (naoConformes.length
+        ? 'Serão geradas ocorrências bloqueantes.'
+        : 'Nenhuma ocorrência automática será gerada.');
+
+    if (!confirm(mensagemConfirmacao)) return;
+
+    const chaves = [
+      CHAVE_VIAGENS,
+      CHAVE_OCORRENCIAS
+    ];
+
+    const anteriores = chaves.map(
+      chave => localStorage.getItem(chave)
+    );
+
+    const statusAnterior = data[indice][3];
+
+    // Em viagem, o bloqueio e aplicado na devolucao.
+    const existeBloqueio = [
+      ...ocorrencias,
+      ...novasOcorrencias
+    ].some(r =>
+      r.veiculo === identificacao &&
+      r.situacao === 'Aberta' &&
+      r.bloqueia === true
+    );
+
+    const statusNovo = devolucao
+      ? (existeBloqueio ? 'Bloqueado' : 'Disponível')
+      : 'Em uso';
+
+    try {
+      localStorage.setItem(
+        CHAVE_VIAGENS,
+        JSON.stringify(viagens)
+      );
+
+      localStorage.setItem(
+        CHAVE_OCORRENCIAS,
+        JSON.stringify([
+          ...ocorrencias,
+          ...novasOcorrencias
+        ])
+      );
+
+      data[indice][3] = statusNovo;
+
+      if (!saveVehicles()) {
+        throw new Error('Falha ao salvar a frota');
+      }
+    } catch (erro) {
+      data[indice][3] = statusAnterior;
+
+      chaves.forEach((chave, i) => {
+        try {
+          if (anteriores[i] === null) {
+            localStorage.removeItem(chave);
+          } else {
+            localStorage.setItem(chave, anteriores[i]);
+          }
+        } catch (falha) {
+          console.error(falha);
+        }
+      });
+
+      resultado(
+        'Falha ao salvar. Confira os dados antes ' +
+        'de tentar novamente.'
+      );
+      return;
+    }
+
+    refresh();
+    atualizarBotao();
+
+    const avisoBloqueio = devolucao &&
+      statusNovo === 'Bloqueado'
+        ? ' O veículo permanece Bloqueado.'
+        : '';
+
+    resultado(
+      tipo + ' registrada com sucesso! ' +
+      'Não conformidades: ' +
+      novasOcorrencias.length + '.' +
+      avisoBloqueio
+    );
+
+    limparFormulario();
+  });
+
+  // Sincroniza o botao com a troca de operacao/veiculo.
+  el('vu-tipo').addEventListener(
+    'change', atualizarBotao
+  );
+
+  el('vu-veiculo').addEventListener(
+    'change', atualizarBotao
+  );
+
+  const refreshOriginal = window.refresh;
+
+  window.refresh = function() {
+    refreshOriginal();
+    atualizarBotao();
+  };
+
+  atualizarBotao();
+})();
+
 </script>
 </body>
 </html>
