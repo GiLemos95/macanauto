@@ -978,6 +978,206 @@ renderFleet = function() {
 
 renderFleet();
 
+/* MACANAUTO v0.4.2 - RETIRADA DEMONSTRATIVA */
+
+(function iniciarRetiradaDemo() {
+  const secao = document.getElementById('inspection');
+  const placa = document.getElementById('plate');
+  const tipo = document.getElementById('kind');
+  const odometro = document.getElementById('odo');
+  const observacoes = document.getElementById('notes');
+
+  if (!secao || document.getElementById('retirada-demo')) return;
+
+  const painel = document.createElement('div');
+  painel.id = 'retirada-demo';
+  painel.className = 'card';
+  painel.style.marginTop = '18px';
+
+  painel.innerHTML = `
+    <h2>Retirada demonstrativa</h2>
+    <p class="muted">
+      Utilize somente informações fictícias.
+      Esta operação é salva neste navegador.
+    </p>
+
+    <div class="two">
+      <div class="field">
+        <label for="demo-driver">Motorista de teste</label>
+        <input id="demo-driver" maxlength="80"
+          placeholder="Ex.: Motorista Teste 01">
+      </div>
+
+      <div class="field">
+        <label for="demo-destination">Destino</label>
+        <input id="demo-destination" maxlength="120"
+          placeholder="Ex.: Fazenda Teste">
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="demo-purpose">Finalidade da viagem</label>
+      <textarea id="demo-purpose" rows="2"
+        maxlength="500"
+        placeholder="Ex.: Vistoria técnica demonstrativa"></textarea>
+    </div>
+
+    <button class="primary" type="button"
+      id="demo-checkout-button">
+      Confirmar retirada de teste
+    </button>
+
+    <p id="demo-checkout-result"
+      role="status" class="muted"></p>
+  `;
+
+  secao.appendChild(painel);
+
+  const botao = document.getElementById('demo-checkout-button');
+  const resultado = document.getElementById('demo-checkout-result');
+
+  botao.addEventListener('click', function() {
+    const identificacao = placa.value;
+    const motorista = document.getElementById('demo-driver')
+      .value.trim();
+    const destino = document.getElementById('demo-destination')
+      .value.trim();
+    const finalidade = document.getElementById('demo-purpose')
+      .value.trim();
+    const kmTexto = odometro.value.trim();
+    const km = Number(kmTexto);
+    const foto = document.getElementById('photo').files[0];
+
+    if (tipo.value !== 'Retirada') {
+      resultado.textContent =
+        'Selecione Retirada no tipo de vistoria.';
+      return;
+    }
+
+    const indice = data.findIndex(v => v[0] === identificacao);
+
+    if (indice === -1) {
+      resultado.textContent =
+        'Selecione um veículo cadastrado.';
+      return;
+    }
+
+    if (data[indice][3] !== 'Disponível') {
+      resultado.textContent =
+        'Retirada não permitida: veículo ' +
+        data[indice][3].toLowerCase() + '.';
+      return;
+    }
+
+    if (!motorista || !destino || !finalidade) {
+      resultado.textContent =
+        'Informe motorista, destino e finalidade.';
+      return;
+    }
+
+    if (
+      kmTexto === '' ||
+      !Number.isSafeInteger(km) ||
+      km < 0
+    ) {
+      resultado.textContent =
+        'Informe uma quilometragem inicial válida.';
+      return;
+    }
+
+    if (!foto) {
+      resultado.textContent =
+        'Selecione uma fotografia de teste.';
+      return;
+    }
+
+    const confirmado = confirm(
+      'Confirmar retirada demonstrativa?\n\n' +
+      'Veículo: ' + identificacao + '\n' +
+      'Motorista: ' + motorista + '\n' +
+      'Destino: ' + destino + '\n' +
+      'Odômetro: ' + km + ' km'
+    );
+
+    if (!confirmado) return;
+
+    const chave = 'macanauto_demo_retiradas_v042';
+    let registros = [];
+
+    try {
+      const armazenados = JSON.parse(
+        localStorage.getItem(chave) || '[]'
+      );
+      if (Array.isArray(armazenados)) {
+        registros = armazenados;
+      }
+    } catch (erro) {
+      resultado.textContent =
+        'Não foi possível ler os registros locais.';
+      return;
+    }
+
+    if (registros.some(r =>
+      r.veiculo === identificacao &&
+      r.situacao === 'Em uso'
+    )) {
+      resultado.textContent =
+        'Já existe uma retirada aberta para este veículo.';
+      return;
+    }
+
+    const registro = {
+      id: 'DEMO-' + Date.now(),
+      veiculo: identificacao,
+      motorista: motorista,
+      destino: destino,
+      finalidade: finalidade,
+      kmInicial: km,
+      observacoes: observacoes.value.trim(),
+      fotoSelecionada: true,
+      dataRetirada: new Date().toISOString(),
+      situacao: 'Em uso'
+    };
+
+    const anterior = data[indice][3];
+
+    try {
+      localStorage.setItem(
+        chave,
+        JSON.stringify([...registros, registro])
+      );
+
+      data[indice][3] = 'Em uso';
+
+      if (!saveVehicles()) {
+        data[indice][3] = anterior;
+        localStorage.setItem(
+          chave,
+          JSON.stringify(registros)
+        );
+        resultado.textContent =
+          'Não foi possível concluir a retirada.';
+        return;
+      }
+    } catch (erro) {
+      data[indice][3] = anterior;
+      resultado.textContent =
+        'Falha ao salvar a retirada neste navegador.';
+      return;
+    }
+
+    refresh();
+
+    resultado.textContent =
+      'Retirada demonstrativa registrada! ' +
+      identificacao + ' agora está Em uso. ' +
+      'A fotografia não foi armazenada.';
+
+    botao.disabled = true;
+    botao.textContent = 'Retirada registrada';
+  });
+})();
+
 </script>
 </body>
 </html>
