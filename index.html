@@ -843,6 +843,141 @@
   }
 
   refresh();
+  
+/* MacanAuto v0.4 - QR Code demonstrativo */
+
+function mostrarQRVeiculo(identificacao) {
+  const veiculo = data.find(v => v[0] === identificacao);
+
+  if (!veiculo) {
+    alert('Veículo não encontrado.');
+    return;
+  }
+
+  const codigo = 'MACANAUTO-DEMO:' + veiculo[0];
+
+  const enderecoQR =
+    'https://api.qrserver.com/v1/create-qr-code/' +
+    '?size=260x260&data=' +
+    encodeURIComponent(codigo);
+
+  const janela = window.open('', '_blank');
+
+  if (!janela) {
+    alert('Permita a abertura de janelas para visualizar o QR Code.');
+    return;
+  }
+
+  const documento = janela.document;
+
+  documento.title = 'QR Code - ' + veiculo[0];
+
+  const estilo = documento.createElement('style');
+  estilo.textContent = `
+    body {
+      font-family: Inter, Arial, sans-serif;
+      text-align: center;
+      padding: 35px;
+      color: #522a00;
+    }
+    img {
+      width: 260px;
+      height: 260px;
+      max-width: 100%;
+      margin: 20px auto;
+    }
+    button {
+      background: #6fb64e;
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 20px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .aviso {
+      color: #777;
+      font-size: 12px;
+      margin-top: 20px;
+    }
+    @media print {
+      button { display: none; }
+    }
+  `;
+
+  documento.head.appendChild(estilo);
+
+  const titulo = documento.createElement('h1');
+  titulo.textContent = 'MacanAuto';
+
+  const subtitulo = documento.createElement('h2');
+  subtitulo.textContent = veiculo[0];
+
+  const modelo = documento.createElement('p');
+  modelo.textContent = veiculo[1] + ' | Frota ' + veiculo[2];
+
+  const imagem = documento.createElement('img');
+  imagem.src = enderecoQR;
+  imagem.alt = 'QR Code de identificação do veículo';
+
+  const codigoTexto = documento.createElement('p');
+  codigoTexto.textContent = codigo;
+
+  const botao = documento.createElement('button');
+  botao.textContent = 'Imprimir identificação';
+  botao.addEventListener('click', () => janela.print());
+
+  const aviso = documento.createElement('p');
+  aviso.className = 'aviso';
+  aviso.textContent =
+    'IDENTIFICAÇÃO DE TESTE - NÃO AUTORIZA RETIRADA';
+
+  documento.body.append(
+    titulo,
+    subtitulo,
+    modelo,
+    imagem,
+    codigoTexto,
+    botao,
+    aviso
+  );
+}
+
+function adicionarBotoesQR() {
+  const cartoes = document.querySelectorAll('#vehicles .vehicle');
+
+  cartoes.forEach(cartao => {
+    if (cartao.querySelector('.qr-demo')) return;
+
+    const identificacao = cartao.querySelector('h3')?.textContent;
+    if (!identificacao) return;
+
+    const botao = document.createElement('button');
+    botao.className = 'secondary qr-demo';
+    botao.textContent = '▦ Gerar QR Code';
+
+    botao.addEventListener('click', () => {
+      mostrarQRVeiculo(identificacao);
+    });
+
+    const acoes = cartao.querySelector('.vehicle-actions');
+
+    if (acoes) {
+      acoes.appendChild(botao);
+    } else {
+      cartao.appendChild(botao);
+    }
+  });
+}
+
+const renderFleetOriginal = renderFleet;
+
+renderFleet = function() {
+  renderFleetOriginal();
+  adicionarBotoesQR();
+};
+
+renderFleet();
+
 </script>
 </body>
 </html>
