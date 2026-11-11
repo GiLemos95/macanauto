@@ -1992,6 +1992,572 @@ renderFleet();
   renderHistorico();
 })();
 
+/* MACANAUTO v0.4.5 - GESTAO DE OCORRENCIAS */
+(function iniciarOcorrencias() {
+  if (document.getElementById('oc-v045')) return;
+
+  const CHAVE = 'macanauto_demo_ocorrencias_v045';
+  const CHAVE_RETIRADAS = 'macanauto_demo_retiradas_v042';
+  const secao = document.getElementById('incidents');
+  if (!secao) return;
+
+  // Substitui somente o conteudo da aba Ocorrencias.
+  secao.replaceChildren();
+
+  const raiz = document.createElement('div');
+  raiz.id = 'oc-v045';
+  secao.appendChild(raiz);
+
+  raiz.innerHTML = `
+    <h1>Gestão de Ocorrências</h1>
+    <p class="muted">
+      Registro e acompanhamento de irregularidades
+      identificadas nos veículos.
+    </p>
+    <div class="notice">
+      Demonstração local. Não utilize informações reais.
+      Fotografias serão implementadas futuramente.
+    </div>
+
+    <div class="cards" style="margin:20px 0">
+      <div class="card">
+        <div class="muted">Total</div>
+        <div class="number" id="oc-total">0</div>
+      </div>
+      <div class="card">
+        <div class="muted">Abertas</div>
+        <div class="number" id="oc-abertas">0</div>
+      </div>
+      <div class="card">
+        <div class="muted">Resolvidas</div>
+        <div class="number" id="oc-resolvidas">0</div>
+      </div>
+      <div class="card">
+        <div class="muted">Bloqueantes</div>
+        <div class="number" id="oc-bloqueantes">0</div>
+      </div>
+    </div>
+
+    <button class="primary" id="oc-nova" type="button">
+      + Nova ocorrência
+    </button>
+
+    <div class="card hidden" id="oc-formulario"
+         style="margin-top:18px">
+      <h2>Registrar ocorrência</h2>
+
+      <div class="two">
+        <div class="field">
+          <label for="oc-veiculo">Veículo</label>
+          <select id="oc-veiculo"></select>
+        </div>
+
+        <div class="field">
+          <label for="oc-tipo">Tipo de ocorrência</label>
+          <select id="oc-tipo">
+            <option value="">Selecione</option>
+            <option value="Avaria externa">Avaria externa</option>
+            <option value="Problema mecanico">Problema mecânico</option>
+            <option value="Pneus">Pneus</option>
+            <option value="Iluminacao">Iluminação</option>
+            <option value="Documentacao">Documentação</option>
+            <option value="Limpeza">Limpeza</option>
+            <option value="Outro">Outro</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="oc-gravidade">Gravidade</label>
+          <select id="oc-gravidade">
+            <option value="Baixa">Baixa</option>
+            <option value="Media">Média</option>
+            <option value="Alta">Alta</option>
+            <option value="Critica">Crítica</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="oc-bloqueio">Bloquear utilização?</label>
+          <select id="oc-bloqueio">
+            <option value="sim">Sim</option>
+            <option value="nao">Não</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="oc-descricao">Descrição da ocorrência</label>
+        <textarea id="oc-descricao" rows="3"
+          maxlength="1500"
+          placeholder="Descreva o problema identificado"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="oc-responsavel">Responsável pelo registro</label>
+        <input id="oc-responsavel" maxlength="100"
+          placeholder="Responsável Teste">
+      </div>
+
+      <div class="toolbar">
+        <button class="primary" type="button"
+          id="oc-salvar">Registrar ocorrência</button>
+        <button class="secondary" type="button"
+          id="oc-cancelar">Cancelar</button>
+      </div>
+    </div>
+
+    <p id="oc-mensagem" role="status"></p>
+
+    <h2 style="margin-top:30px">Ocorrências registradas</h2>
+
+    <div class="toolbar">
+      <select id="oc-filtro-veiculo" class="secondary"
+        aria-label="Filtrar veículo"></select>
+      <select id="oc-filtro-status" class="secondary"
+        aria-label="Filtrar situação">
+        <option value="">Todas as situações</option>
+        <option value="Aberta">Abertas</option>
+        <option value="Resolvida">Resolvidas</option>
+      </select>
+    </div>
+
+    <div id="oc-lista"
+      style="display:grid;gap:14px"></div>
+  `;
+
+  const el = id => document.getElementById(id);
+
+  function ler(chave) {
+    const registros = JSON.parse(
+      localStorage.getItem(chave) || '[]'
+    );
+    if (!Array.isArray(registros)) {
+      throw new Error('Formato de dados invalido');
+    }
+    return registros;
+  }
+
+  function ocorrencias() {
+    return ler(CHAVE);
+  }
+
+  function retiradas() {
+    return ler(CHAVE_RETIRADAS);
+  }
+
+  function mensagem(texto) {
+    el('oc-mensagem').textContent = texto;
+  }
+
+  function abertaBloqueante(registros, veiculo) {
+    return registros.some(r =>
+      r.veiculo === veiculo &&
+      r.situacao === 'Aberta' &&
+      r.bloqueia === true
+    );
+  }
+
+  function emViagem(registros, veiculo) {
+    return registros.some(r =>
+      r.veiculo === veiculo &&
+      r.situacao === 'Em uso'
+    );
+  }
+
+  // Reconciliacao: preserva "Em uso" durante a viagem.
+  // Depois da devolucao, bloqueia se houver ocorrencia aberta.
+  function reconciliarFrota() {
+    let listaOcorrencias, listaRetiradas;
+
+    try {
+      listaOcorrencias = ocorrencias();
+      listaRetiradas = retiradas();
+    } catch (erro) {
+      console.error(erro);
+      return false;
+    }
+
+    let alterou = false;
+
+    data.forEach(v => {
+      const bloqueio = abertaBloqueante(
+        listaOcorrencias, v[0]
+      );
+      const viagem = emViagem(listaRetiradas, v[0]);
+
+      let novoStatus = v[3];
+
+      if (viagem) {
+        // Nao altera a situacao de uma viagem aberta.
+        if (v[3] === 'Disponível') {
+          novoStatus = 'Em uso';
+        }
+      } else if (bloqueio) {
+        novoStatus = 'Bloqueado';
+      } else if (v[3] === 'Bloqueado') {
+        // Libera apenas bloqueios controlados por ocorrencias.
+        const temHistoricoBloqueante = listaOcorrencias.some(
+          r => r.veiculo === v[0] && r.bloqueia === true
+        );
+        if (temHistoricoBloqueante) {
+          novoStatus = 'Disponível';
+        }
+      }
+
+      if (novoStatus !== v[3]) {
+        v[3] = novoStatus;
+        alterou = true;
+      }
+    });
+
+    if (alterou) {
+      return saveVehicles();
+    }
+
+    return true;
+  }
+
+  function preencherVeiculos() {
+    const anterior = el('oc-veiculo').value;
+    const filtroAnterior = el('oc-filtro-veiculo').value;
+
+    el('oc-veiculo').replaceChildren();
+    el('oc-filtro-veiculo').replaceChildren();
+
+    const todos = document.createElement('option');
+    todos.value = '';
+    todos.textContent = 'Todos os veículos';
+    el('oc-filtro-veiculo').appendChild(todos);
+
+    data.forEach(v => {
+      const opcao = document.createElement('option');
+      opcao.value = v[0];
+      opcao.textContent = v[0] + ' — ' + v[1];
+      el('oc-veiculo').appendChild(opcao);
+
+      const filtro = document.createElement('option');
+      filtro.value = v[0];
+      filtro.textContent = v[0];
+      el('oc-filtro-veiculo').appendChild(filtro);
+    });
+
+    if (data.some(v => v[0] === anterior)) {
+      el('oc-veiculo').value = anterior;
+    }
+
+    if (data.some(v => v[0] === filtroAnterior)) {
+      el('oc-filtro-veiculo').value = filtroAnterior;
+    }
+  }
+
+  function campo(container, rotulo, valor) {
+    const linha = document.createElement('p');
+    const nome = document.createElement('strong');
+    nome.textContent = rotulo + ': ';
+
+    const conteudo = document.createElement('span');
+    conteudo.textContent =
+      valor === undefined || valor === null || valor === ''
+        ? 'Não informado'
+        : String(valor);
+
+    linha.append(nome, conteudo);
+    container.appendChild(linha);
+  }
+
+  function dataFormatada(valor) {
+    const d = new Date(valor);
+    return Number.isNaN(d.getTime())
+      ? 'Data inválida'
+      : d.toLocaleString('pt-BR');
+  }
+
+  function renderOcorrencias() {
+    let registros;
+    try {
+      registros = ocorrencias();
+    } catch (erro) {
+      mensagem('Erro ao ler ocorrências locais.');
+      return;
+    }
+
+    preencherVeiculos();
+
+    el('oc-total').textContent = registros.length;
+    el('oc-abertas').textContent =
+      registros.filter(r => r.situacao === 'Aberta').length;
+    el('oc-resolvidas').textContent =
+      registros.filter(r => r.situacao === 'Resolvida').length;
+    el('oc-bloqueantes').textContent =
+      registros.filter(r =>
+        r.situacao === 'Aberta' && r.bloqueia
+      ).length;
+
+    const filtroVeiculo = el('oc-filtro-veiculo').value;
+    const filtroStatus = el('oc-filtro-status').value;
+
+    const filtrados = registros.filter(r =>
+      (!filtroVeiculo || r.veiculo === filtroVeiculo) &&
+      (!filtroStatus || r.situacao === filtroStatus)
+    ).sort((a, b) =>
+      new Date(b.dataRegistro) - new Date(a.dataRegistro)
+    );
+
+    const lista = el('oc-lista');
+    lista.replaceChildren();
+
+    if (!filtrados.length) {
+      const vazio = document.createElement('div');
+      vazio.className = 'card';
+      vazio.textContent = 'Nenhuma ocorrência encontrada.';
+      lista.appendChild(vazio);
+      return;
+    }
+
+    filtrados.forEach(registro => {
+      const card = document.createElement('article');
+      card.className = 'card';
+
+      const topo = document.createElement('div');
+      topo.style.display = 'flex';
+      topo.style.justifyContent = 'space-between';
+      topo.style.gap = '12px';
+      topo.style.flexWrap = 'wrap';
+
+      const titulo = document.createElement('h3');
+      titulo.style.margin = '0';
+      titulo.style.color = '#522a00';
+      titulo.textContent =
+        registro.veiculo + ' — ' + registro.tipo;
+
+      const status = document.createElement('span');
+      status.className = 'pill';
+      status.textContent = registro.situacao;
+
+      topo.append(titulo, status);
+      card.appendChild(topo);
+
+      campo(card, 'Gravidade', registro.gravidade);
+      campo(card, 'Bloqueia utilização',
+        registro.bloqueia ? 'Sim' : 'Não');
+      campo(card, 'Registrada em',
+        dataFormatada(registro.dataRegistro));
+
+      const detalhes = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = 'Ver detalhes';
+      summary.style.cursor = 'pointer';
+      summary.style.fontWeight = '700';
+
+      const conteudo = document.createElement('div');
+      campo(conteudo, 'Protocolo', registro.id);
+      campo(conteudo, 'Descrição', registro.descricao);
+      campo(conteudo, 'Responsável', registro.responsavel);
+
+      if (registro.dataResolucao) {
+        campo(conteudo, 'Resolvida em',
+          dataFormatada(registro.dataResolucao));
+        campo(conteudo, 'Solução',
+          registro.solucao);
+      }
+
+      detalhes.append(summary, conteudo);
+      card.appendChild(detalhes);
+
+      if (registro.situacao === 'Aberta') {
+        const resolver = document.createElement('button');
+        resolver.className = 'secondary';
+        resolver.style.marginTop = '12px';
+        resolver.textContent = '✓ Resolver ocorrência';
+
+        resolver.addEventListener('click', () => {
+          resolverOcorrencia(registro.id);
+        });
+
+        card.appendChild(resolver);
+      }
+
+      lista.appendChild(card);
+    });
+  }
+
+  function atualizarTudo() {
+    reconciliarFrota();
+    refresh();
+    renderOcorrencias();
+  }
+
+  function resolverOcorrencia(id) {
+    const solucao = prompt(
+      'Descreva a solução aplicada à ocorrência:'
+    );
+
+    if (solucao === null) return;
+
+    if (!solucao.trim()) {
+      mensagem('Informe a solução antes de concluir.');
+      return;
+    }
+
+    let registros;
+    try {
+      registros = ocorrencias();
+    } catch (erro) {
+      mensagem('Erro ao ler ocorrências.');
+      return;
+    }
+
+    const registro = registros.find(r => r.id === id);
+
+    if (!registro || registro.situacao !== 'Aberta') {
+      mensagem('Ocorrência não está aberta.');
+      return;
+    }
+
+    if (!confirm('Confirmar resolução da ocorrência?')) {
+      return;
+    }
+
+    registro.situacao = 'Resolvida';
+    registro.solucao = solucao.trim().slice(0, 1500);
+    registro.dataResolucao = new Date().toISOString();
+
+    try {
+      localStorage.setItem(CHAVE, JSON.stringify(registros));
+    } catch (erro) {
+      mensagem('Falha ao salvar a resolução.');
+      return;
+    }
+
+    atualizarTudo();
+    mensagem('Ocorrência resolvida com sucesso.');
+  }
+
+  el('oc-nova').addEventListener('click', () => {
+    preencherVeiculos();
+    el('oc-formulario').classList.remove('hidden');
+    mensagem('');
+  });
+
+  el('oc-cancelar').addEventListener('click', () => {
+    el('oc-formulario').classList.add('hidden');
+  });
+
+  el('oc-salvar').addEventListener('click', () => {
+    const veiculo = el('oc-veiculo').value;
+    const tipo = el('oc-tipo').value;
+    const gravidade = el('oc-gravidade').value;
+    const bloqueia = el('oc-bloqueio').value === 'sim';
+    const descricao = el('oc-descricao').value.trim();
+    const responsavel = el('oc-responsavel').value.trim();
+
+    if (!veiculo || !tipo || !descricao || !responsavel) {
+      mensagem('Preencha todos os campos obrigatórios.');
+      return;
+    }
+
+    if (!data.some(v => v[0] === veiculo)) {
+      mensagem('Veículo não encontrado.');
+      return;
+    }
+
+    if (!confirm(
+      'Registrar ocorrência para ' + veiculo + '?' +
+      (bloqueia ? '\nA utilização ficará bloqueada.' : '')
+    )) return;
+
+    let registros;
+    try {
+      registros = ocorrencias();
+    } catch (erro) {
+      mensagem('Erro ao ler ocorrências.');
+      return;
+    }
+
+    registros.push({
+      id: 'OC-' + Date.now() + '-' +
+        Math.random().toString(36).slice(2, 7),
+      veiculo,
+      tipo,
+      gravidade,
+      bloqueia,
+      descricao,
+      responsavel,
+      situacao: 'Aberta',
+      dataRegistro: new Date().toISOString(),
+      dataResolucao: null,
+      solucao: null
+    });
+
+    try {
+      localStorage.setItem(CHAVE, JSON.stringify(registros));
+    } catch (erro) {
+      mensagem('Falha ao salvar ocorrência.');
+      return;
+    }
+
+    el('oc-formulario').classList.add('hidden');
+    el('oc-tipo').value = '';
+    el('oc-descricao').value = '';
+    el('oc-responsavel').value = '';
+
+    atualizarTudo();
+
+    mensagem(
+      'Ocorrência registrada. ' +
+      (bloqueia
+        ? 'O bloqueio foi aplicado conforme a situação da viagem.'
+        : 'Não foi solicitado bloqueio.')
+    );
+  });
+
+  el('oc-filtro-veiculo').addEventListener(
+    'change', renderOcorrencias
+  );
+  el('oc-filtro-status').addEventListener(
+    'change', renderOcorrencias
+  );
+
+  // Integra com as atualizacoes da frota e das vistorias.
+  const refreshAnterior = window.refresh;
+  window.refresh = function() {
+    reconciliarFrota();
+    refreshAnterior();
+  };
+
+  // Corrige a mensagem da devolucao quando houver bloqueio.
+  const confirmarVistoria = document.getElementById(
+    'vu-confirmar'
+  );
+
+  if (confirmarVistoria) {
+    confirmarVistoria.addEventListener('click', () => {
+      const resultado = document.getElementById('vu-resultado');
+      const veiculo = document.getElementById('vu-veiculo');
+      const tipo = document.getElementById('vu-tipo');
+
+      if (!resultado || !veiculo || !tipo) return;
+      if (tipo.value !== 'Devolução') return;
+      if (!resultado.textContent.includes(
+        'Devolução registrada!'
+      )) return;
+
+      const registro = data.find(v => v[0] === veiculo.value);
+
+      if (registro && registro[3] === 'Bloqueado') {
+        resultado.textContent =
+          'Devolução registrada! O veículo permanece ' +
+          'Bloqueado por ocorrência aberta.';
+      }
+    });
+  }
+
+  // Reconciliacao inicial e renderizacao.
+  reconciliarFrota();
+  refreshAnterior();
+  renderOcorrencias();
+})();
+
 </script>
 </body>
 </html>
