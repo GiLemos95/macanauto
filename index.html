@@ -3033,6 +3033,615 @@ renderFleet();
   atualizarBotao();
 })();
 
+/* MACANAUTO v0.4.7 - RELATORIOS GERENCIAIS */
+(function iniciarRelatorios() {
+  if (document.getElementById('reports')) return;
+
+  const CHAVE_VIAGENS = 'macanauto_demo_retiradas_v042';
+  const CHAVE_OCORRENCIAS = 'macanauto_demo_ocorrencias_v045';
+
+  const menu = document.querySelector('nav');
+  const principal = document.querySelector('main');
+
+  if (!menu || !principal) return;
+
+  const botaoMenu = document.createElement('button');
+  botaoMenu.dataset.page = 'reports';
+  botaoMenu.textContent = '📊 Relatórios';
+
+  const botaoSobre = menu.querySelector(
+    '[data-page="about"]'
+  );
+
+  menu.insertBefore(botaoMenu, botaoSobre);
+
+  const secao = document.createElement('section');
+  secao.id = 'reports';
+  secao.className = 'hidden';
+
+  secao.innerHTML = `
+    <h1>Relatórios Gerenciais</h1>
+
+    <p class="muted">
+      Indicadores de utilização da frota e ocorrências.
+    </p>
+
+    <div class="notice">
+      Relatórios demonstrativos gerados com dados
+      armazenados neste navegador.
+    </div>
+
+    <div class="card" style="margin:20px 0">
+      <h3 style="color:#522a00">Filtros do relatório</h3>
+
+      <div class="two">
+        <div class="field">
+          <label for="rp-inicio">Data inicial</label>
+          <input type="date" id="rp-inicio">
+        </div>
+
+        <div class="field">
+          <label for="rp-fim">Data final</label>
+          <input type="date" id="rp-fim">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="rp-veiculo">Veículo</label>
+        <select id="rp-veiculo"></select>
+      </div>
+
+      <div class="toolbar">
+        <button type="button" class="primary"
+          id="rp-atualizar">Atualizar relatório</button>
+
+        <button type="button" class="secondary"
+          id="rp-limpar">Limpar filtros</button>
+      </div>
+
+      <p id="rp-mensagem" role="status"></p>
+    </div>
+
+    <div class="cards" style="margin-bottom:20px">
+      <div class="card">
+        <div class="muted">Total de viagens</div>
+        <div class="number" id="rp-viagens">0</div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Viagens concluídas</div>
+        <div class="number" id="rp-concluidas">0</div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Viagens em andamento</div>
+        <div class="number" id="rp-andamento">0</div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Km percorridos</div>
+        <div class="number" id="rp-km">0</div>
+      </div>
+    </div>
+
+    <div class="two">
+      <div class="card">
+        <h3 style="color:#522a00">Ocorrências</h3>
+
+        <p>Abertas:
+          <strong id="rp-oc-abertas">0</strong>
+        </p>
+
+        <p>Resolvidas:
+          <strong id="rp-oc-resolvidas">0</strong>
+        </p>
+
+        <p>Bloqueantes abertas:
+          <strong id="rp-oc-bloqueios">0</strong>
+        </p>
+
+        <p>Total no período:
+          <strong id="rp-oc-total">0</strong>
+        </p>
+      </div>
+
+      <div class="card">
+        <h3 style="color:#522a00">Resumo da frota</h3>
+        <p class="muted">
+          Situação atual dos veículos cadastrados,
+          independentemente do período selecionado.
+        </p>
+
+        <p>Disponíveis:
+          <strong id="rp-disponiveis">0</strong>
+        </p>
+
+        <p>Em uso:
+          <strong id="rp-emuso">0</strong>
+        </p>
+
+        <p>Bloqueados:
+          <strong id="rp-bloqueados">0</strong>
+        </p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+      <h2>Utilização por veículo</h2>
+
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Veículo</th>
+              <th>Viagens</th>
+              <th>Concluídas</th>
+              <th>Km percorridos</th>
+            </tr>
+          </thead>
+          <tbody id="rp-tabela"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+      <h2>Exportação para Excel</h2>
+
+      <p class="muted">
+        Arquivos CSV com os registros correspondentes
+        aos filtros selecionados.
+      </p>
+
+      <div class="toolbar">
+        <button type="button" class="secondary"
+          id="rp-exportar-viagens">
+          Exportar viagens (CSV)
+        </button>
+
+        <button type="button" class="secondary"
+          id="rp-exportar-ocorrencias">
+          Exportar ocorrências (CSV)
+        </button>
+      </div>
+    </div>
+  `;
+
+  const rodape = principal.querySelector('.footer');
+
+  if (rodape) {
+    principal.insertBefore(secao, rodape);
+  } else {
+    principal.appendChild(secao);
+  }
+
+  const el = id => document.getElementById(id);
+
+  let viagensFiltradas = [];
+  let ocorrenciasFiltradas = [];
+  let relatorioValido = false;
+
+  function ler(chave) {
+    const valor = JSON.parse(
+      localStorage.getItem(chave) || '[]'
+    );
+
+    if (!Array.isArray(valor)) {
+      throw new Error('Formato de registros inválido');
+    }
+
+    return valor;
+  }
+
+  function dataLocal(valor) {
+    if (!valor) return '';
+
+    const data = new Date(valor);
+
+    if (Number.isNaN(data.getTime())) return '';
+
+    const ano = data.getFullYear();
+    const mes = String(
+      data.getMonth() + 1
+    ).padStart(2, '0');
+    const dia = String(
+      data.getDate()
+    ).padStart(2, '0');
+
+    return ano + '-' + mes + '-' + dia;
+  }
+
+  function dataBR(valor) {
+    if (!valor) return '';
+
+    const data = new Date(valor);
+
+    return Number.isNaN(data.getTime())
+      ? ''
+      : data.toLocaleString('pt-BR');
+  }
+
+  function numero(valor) {
+    return new Intl.NumberFormat('pt-BR', {
+      maximumFractionDigits: 0
+    }).format(valor);
+  }
+
+  function mensagem(valor) {
+    el('rp-mensagem').textContent = valor;
+  }
+
+  function preencherVeiculos() {
+    const seletor = el('rp-veiculo');
+    const anterior = seletor.value;
+
+    seletor.replaceChildren();
+
+    const todos = document.createElement('option');
+    todos.value = '';
+    todos.textContent = 'Todos os veículos';
+    seletor.appendChild(todos);
+
+    const identificacoes = new Set();
+
+    data.forEach(v => identificacoes.add(v[0]));
+
+    try {
+      ler(CHAVE_VIAGENS).forEach(
+        r => identificacoes.add(r.veiculo)
+      );
+
+      ler(CHAVE_OCORRENCIAS).forEach(
+        r => identificacoes.add(r.veiculo)
+      );
+    } catch (erro) {
+      // A leitura sera validada ao gerar o relatorio.
+    }
+
+    [...identificacoes]
+      .filter(Boolean)
+      .sort()
+      .forEach(id => {
+        const opcao = document.createElement('option');
+        opcao.value = id;
+        opcao.textContent = id;
+        seletor.appendChild(opcao);
+      });
+
+    if (identificacoes.has(anterior)) {
+      seletor.value = anterior;
+    }
+  }
+
+  function noPeriodo(dataISO, inicio, fim) {
+    const dia = dataLocal(dataISO);
+
+    if (!dia) return !inicio && !fim;
+
+    return (!inicio || dia >= inicio) &&
+      (!fim || dia <= fim);
+  }
+
+  function kmPercorridos(registro) {
+    if (registro.situacao !== 'Devolvido') return 0;
+
+    const inicial = Number(registro.kmInicial);
+    const final = Number(registro.kmFinal);
+
+    if (
+      !Number.isFinite(inicial) ||
+      !Number.isFinite(final) ||
+      final < inicial
+    ) return 0;
+
+    return final - inicial;
+  }
+
+  function atualizarFrota() {
+    el('rp-disponiveis').textContent =
+      data.filter(v => v[3] === 'Disponível').length;
+
+    el('rp-emuso').textContent =
+      data.filter(v => v[3] === 'Em uso').length;
+
+    el('rp-bloqueados').textContent =
+      data.filter(v => v[3] === 'Bloqueado').length;
+  }
+
+  function atualizarTabela() {
+    const tabela = el('rp-tabela');
+    tabela.replaceChildren();
+
+    const agrupados = new Map();
+
+    viagensFiltradas.forEach(r => {
+      const id = r.veiculo || 'Não identificado';
+
+      if (!agrupados.has(id)) {
+        agrupados.set(id, {
+          veiculo: id,
+          viagens: 0,
+          concluidas: 0,
+          km: 0
+        });
+      }
+
+      const item = agrupados.get(id);
+      item.viagens++;
+
+      if (r.situacao === 'Devolvido') {
+        item.concluidas++;
+        item.km += kmPercorridos(r);
+      }
+    });
+
+    const linhas = [...agrupados.values()]
+      .sort((a, b) =>
+        a.veiculo.localeCompare(b.veiculo, 'pt-BR')
+      );
+
+    if (!linhas.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+
+      td.colSpan = 4;
+      td.textContent =
+        'Nenhuma viagem encontrada para os filtros.';
+
+      tr.appendChild(td);
+      tabela.appendChild(tr);
+      return;
+    }
+
+    linhas.forEach(item => {
+      const tr = document.createElement('tr');
+
+      [
+        item.veiculo,
+        numero(item.viagens),
+        numero(item.concluidas),
+        numero(item.km)
+      ].forEach(valor => {
+        const td = document.createElement('td');
+        td.textContent = valor;
+        tr.appendChild(td);
+      });
+
+      tabela.appendChild(tr);
+    });
+  }
+
+  function gerarRelatorio() {
+    const inicio = el('rp-inicio').value;
+    const fim = el('rp-fim').value;
+    const veiculo = el('rp-veiculo').value;
+
+    relatorioValido = false;
+
+    if (inicio && fim && inicio > fim) {
+      mensagem(
+        'A data inicial não pode ser posterior à final.'
+      );
+      return;
+    }
+
+    let viagens, ocorrencias;
+
+    try {
+      viagens = ler(CHAVE_VIAGENS);
+      ocorrencias = ler(CHAVE_OCORRENCIAS);
+    } catch (erro) {
+      mensagem('Erro ao consultar os dados locais.');
+      return;
+    }
+
+    viagensFiltradas = viagens.filter(r =>
+      (!veiculo || r.veiculo === veiculo) &&
+      noPeriodo(r.dataRetirada, inicio, fim)
+    );
+
+    ocorrenciasFiltradas = ocorrencias.filter(r =>
+      (!veiculo || r.veiculo === veiculo) &&
+      noPeriodo(r.dataRegistro, inicio, fim)
+    );
+
+    const concluidas = viagensFiltradas.filter(
+      r => r.situacao === 'Devolvido'
+    );
+
+    const andamento = viagensFiltradas.filter(
+      r => r.situacao === 'Em uso'
+    );
+
+    const km = concluidas.reduce(
+      (total, r) => total + kmPercorridos(r),
+      0
+    );
+
+    el('rp-viagens').textContent =
+      numero(viagensFiltradas.length);
+
+    el('rp-concluidas').textContent =
+      numero(concluidas.length);
+
+    el('rp-andamento').textContent =
+      numero(andamento.length);
+
+    el('rp-km').textContent = numero(km);
+
+    el('rp-oc-total').textContent =
+      numero(ocorrenciasFiltradas.length);
+
+    el('rp-oc-abertas').textContent =
+      numero(ocorrenciasFiltradas.filter(
+        r => r.situacao === 'Aberta'
+      ).length);
+
+    el('rp-oc-resolvidas').textContent =
+      numero(ocorrenciasFiltradas.filter(
+        r => r.situacao === 'Resolvida'
+      ).length);
+
+    el('rp-oc-bloqueios').textContent =
+      numero(ocorrenciasFiltradas.filter(
+        r => r.situacao === 'Aberta' &&
+          r.bloqueia === true
+      ).length);
+
+    atualizarFrota();
+    atualizarTabela();
+
+    relatorioValido = true;
+
+    mensagem(
+      'Relatório atualizado. O período considera ' +
+      'a data da retirada e a data de abertura ' +
+      'das ocorrências.'
+    );
+  }
+
+  function protegerCelula(valor) {
+    let texto = String(valor ?? '');
+
+    // Impede interpretacao como formula em planilhas.
+    if (/^[\s]*[=+\-@]/.test(texto)) {
+      texto = "'" + texto;
+    }
+
+    return '"' + texto.replace(/"/g, '""') + '"';
+  }
+
+  function exportarCSV(nome, cabecalho, linhas) {
+    if (!relatorioValido) {
+      mensagem(
+        'Atualize o relatório antes de exportar.'
+      );
+      return;
+    }
+
+    const conteudo = [
+      cabecalho.map(protegerCelula).join(';'),
+      ...linhas.map(linha =>
+        linha.map(protegerCelula).join(';')
+      )
+    ].join('\r\n');
+
+    const blob = new Blob(
+      ['\uFEFF' + conteudo],
+      { type: 'text/csv;charset=utf-8;' }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = nome;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportarViagens() {
+    const linhas = viagensFiltradas.map(r => [
+      r.id,
+      r.veiculo,
+      r.motorista,
+      r.destino,
+      r.finalidade,
+      dataBR(r.dataRetirada),
+      dataBR(r.dataDevolucao),
+      r.kmInicial,
+      r.kmFinal,
+      r.situacao === 'Devolvido'
+        ? kmPercorridos(r)
+        : '',
+      r.situacao
+    ]);
+
+    exportarCSV(
+      'MacanAuto_Viagens_v047.csv',
+      [
+        'Protocolo',
+        'Veiculo',
+        'Motorista',
+        'Destino',
+        'Finalidade',
+        'Data retirada',
+        'Data devolucao',
+        'Km inicial',
+        'Km final',
+        'Km percorridos',
+        'Situacao'
+      ],
+      linhas
+    );
+  }
+
+  function exportarOcorrencias() {
+    const linhas = ocorrenciasFiltradas.map(r => [
+      r.id,
+      r.veiculo,
+      r.tipo,
+      r.gravidade,
+      r.bloqueia ? 'Sim' : 'Nao',
+      r.descricao,
+      r.responsavel,
+      r.situacao,
+      dataBR(r.dataRegistro),
+      dataBR(r.dataResolucao),
+      r.solucao
+    ]);
+
+    exportarCSV(
+      'MacanAuto_Ocorrencias_v047.csv',
+      [
+        'Protocolo',
+        'Veiculo',
+        'Tipo',
+        'Gravidade',
+        'Bloqueante',
+        'Descricao',
+        'Responsavel',
+        'Situacao',
+        'Data registro',
+        'Data resolucao',
+        'Solucao'
+      ],
+      linhas
+    );
+  }
+
+  botaoMenu.addEventListener('click', () => {
+    go('reports');
+    preencherVeiculos();
+    gerarRelatorio();
+  });
+
+  el('rp-atualizar').addEventListener(
+    'click', gerarRelatorio
+  );
+
+  el('rp-limpar').addEventListener('click', () => {
+    el('rp-inicio').value = '';
+    el('rp-fim').value = '';
+    el('rp-veiculo').value = '';
+    gerarRelatorio();
+  });
+
+  el('rp-exportar-viagens').addEventListener(
+    'click', exportarViagens
+  );
+
+  el('rp-exportar-ocorrencias').addEventListener(
+    'click', exportarOcorrencias
+  );
+
+  preencherVeiculos();
+  gerarRelatorio();
+})();
+
 </script>
 </body>
 </html>
