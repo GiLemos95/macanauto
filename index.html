@@ -4500,6 +4500,520 @@ renderFleet();
   atualizarGraficos();
 })();
 
+/* MACANAUTO v0.4.10 - BLOQUEIOS ADMINISTRATIVOS */
+(function iniciarBloqueiosAdministrativos() {
+  if (document.getElementById('ba-v0410')) return;
+
+  const frota = document.getElementById('fleet');
+  if (!frota) return;
+
+  const CHAVE_ADMIN =
+    'macanauto_demo_bloqueios_admin_v0410';
+  const CHAVE_OC =
+    'macanauto_demo_ocorrencias_v045';
+  const CHAVE_VIAGENS =
+    'macanauto_demo_retiradas_v042';
+
+  const el = id => document.getElementById(id);
+
+  const estilo = document.createElement('style');
+  estilo.textContent = `
+    #ba-v0410 {
+      margin-top: 22px;
+      border: 1px solid #e7dfd5;
+      border-radius: 16px;
+      padding: 20px;
+      background: #fff;
+    }
+    #ba-v0410 h2 { color: #522A00; }
+    #ba-v0410 .ba-registro {
+      border: 1px solid #e7dfd5;
+      border-radius: 12px;
+      padding: 14px;
+      margin-top: 12px;
+    }
+    #ba-v0410 .ba-registro p {
+      margin: 7px 0;
+    }
+    #ba-v0410 .ba-acoes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    #ba-v0410 .ba-alerta {
+      color: #a33b2e;
+      font-weight: 600;
+    }
+  `;
+  document.head.appendChild(estilo);
+
+  const painel = document.createElement('div');
+  painel.id = 'ba-v0410';
+
+  painel.innerHTML = `
+    <h2>Gestão de Bloqueios Administrativos</h2>
+
+    <p class="muted">
+      Registre impedimentos administrativos sem
+      alterar o histórico de ocorrências.
+    </p>
+
+    <div class="two">
+      <div class="field">
+        <label for="ba-veiculo">Veículo</label>
+        <select id="ba-veiculo"></select>
+      </div>
+
+      <div class="field">
+        <label for="ba-responsavel">
+          Responsável pelo bloqueio
+        </label>
+        <input id="ba-responsavel"
+          maxlength="120"
+          placeholder="Nome do responsável">
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="ba-motivo">
+        Justificativa do bloqueio
+      </label>
+      <textarea id="ba-motivo" rows="3"
+        maxlength="1000"
+        placeholder="Informe o motivo administrativo">
+      </textarea>
+    </div>
+
+    <div class="ba-acoes">
+      <button type="button" class="primary"
+        id="ba-bloquear">
+        Bloquear administrativamente
+      </button>
+
+      <button type="button" class="secondary"
+        id="ba-atualizar">
+        Atualizar registros
+      </button>
+    </div>
+
+    <p id="ba-mensagem" role="status"></p>
+
+    <h3 style="color:#522A00">
+      Bloqueios administrativos ativos
+    </h3>
+
+    <div id="ba-lista"></div>
+  `;
+
+  frota.appendChild(painel);
+
+  function ler(chave) {
+    const registros = JSON.parse(
+      localStorage.getItem(chave) || '[]'
+    );
+
+    if (!Array.isArray(registros)) {
+      throw new Error('Registros locais inválidos');
+    }
+
+    return registros;
+  }
+
+  function mensagem(texto) {
+    el('ba-mensagem').textContent = texto;
+  }
+
+  function bloqueiosAtivos() {
+    return ler(CHAVE_ADMIN).filter(
+      r => r.situacao === 'Ativo'
+    );
+  }
+
+  function temBloqueioAdmin(veiculo) {
+    return bloqueiosAtivos().some(
+      r => r.veiculo === veiculo
+    );
+  }
+
+  function temOcorrenciaBloqueante(veiculo) {
+    return ler(CHAVE_OC).some(r =>
+      r.veiculo === veiculo &&
+      r.situacao === 'Aberta' &&
+      r.bloqueia === true
+    );
+  }
+
+  function temViagemAberta(veiculo) {
+    return ler(CHAVE_VIAGENS).some(r =>
+      r.veiculo === veiculo &&
+      r.situacao === 'Em uso'
+    );
+  }
+
+  function aplicarBloqueios() {
+    const ativos = new Set(
+      bloqueiosAtivos().map(r => r.veiculo)
+    );
+
+    let alterou = false;
+
+    data.forEach(veiculo => {
+      const id = veiculo[0];
+
+      // Uma viagem em andamento continua registrada
+      // como Em uso. O bloqueio impede nova retirada.
+      if (
+        ativos.has(id) &&
+        !temViagemAberta(id) &&
+        veiculo[3] !== 'Bloqueado'
+      ) {
+        veiculo[3] = 'Bloqueado';
+        alterou = true;
+      }
+    });
+
+    if (alterou) {
+      saveVehicles();
+      if (typeof renderFleet === 'function') {
+        renderFleet();
+      }
+    }
+
+    return alterou;
+  }
+
+  function preencherVeiculos() {
+    const seletor = el('ba-veiculo');
+    const anterior = seletor.value;
+
+    seletor.replaceChildren();
+
+    const inicial = document.createElement('option');
+    inicial.value = '';
+    inicial.textContent = 'Selecione o veículo';
+    seletor.appendChild(inicial);
+
+    data.forEach(v => {
+      const opcao = document.createElement('option');
+      opcao.value = v[0];
+      opcao.textContent = v[0] + ' — ' + v[1];
+      seletor.appendChild(opcao);
+    });
+
+    if (data.some(v => v[0] === anterior)) {
+      seletor.value = anterior;
+    }
+  }
+
+  function formatarData(valor) {
+    const d = new Date(valor);
+    return Number.isNaN(d.getTime())
+      ? 'Não informada'
+      : d.toLocaleString('pt-BR');
+  }
+
+  function criarTexto(tag, texto) {
+    const elemento = document.createElement(tag);
+    elemento.textContent = String(texto);
+    return elemento;
+  }
+
+  function listarBloqueios() {
+    const lista = el('ba-lista');
+    lista.replaceChildren();
+
+    let ativos;
+
+    try {
+      ativos = bloqueiosAtivos();
+    } catch (erro) {
+      mensagem('Erro ao ler bloqueios locais.');
+      return;
+    }
+
+    if (!ativos.length) {
+      lista.appendChild(
+        criarTexto(
+          'p',
+          'Nenhum bloqueio administrativo ativo.'
+        )
+      );
+      return;
+    }
+
+    ativos.forEach(registro => {
+      const card = document.createElement('div');
+      card.className = 'ba-registro';
+
+      const titulo = criarTexto(
+        'h4',
+        registro.veiculo
+      );
+      titulo.style.color = '#522A00';
+
+      const motivo = criarTexto(
+        'p',
+        'Motivo: ' + registro.motivo
+      );
+
+      const responsavel = criarTexto(
+        'p',
+        'Responsável: ' + registro.responsavel
+      );
+
+      const dataRegistro = criarTexto(
+        'p',
+        'Bloqueado em: ' +
+        formatarData(registro.dataRegistro)
+      );
+
+      const situacao = criarTexto(
+        'p',
+        temViagemAberta(registro.veiculo)
+          ? 'Viagem em andamento; nova retirada impedida.'
+          : 'Bloqueio administrativo ativo.'
+      );
+
+      situacao.className = 'ba-alerta';
+
+      const liberar = document.createElement('button');
+      liberar.type = 'button';
+      liberar.className = 'secondary';
+      liberar.textContent = 'Liberar bloqueio administrativo';
+
+      liberar.addEventListener('click', () => {
+        const responsavelLiberacao = prompt(
+          'Informe o responsável pela liberação:'
+        );
+
+        if (
+          responsavelLiberacao === null ||
+          !responsavelLiberacao.trim()
+        ) return;
+
+        const justificativa = prompt(
+          'Informe a justificativa da liberação:'
+        );
+
+        if (
+          justificativa === null ||
+          !justificativa.trim()
+        ) return;
+
+        if (!confirm(
+          'Confirmar liberação administrativa de ' +
+          registro.veiculo + '?'
+        )) return;
+
+        try {
+          const registros = ler(CHAVE_ADMIN);
+          const alvo = registros.find(
+            r => r.id === registro.id &&
+              r.situacao === 'Ativo'
+          );
+
+          if (!alvo) {
+            mensagem('Bloqueio não encontrado.');
+            return;
+          }
+
+          alvo.situacao = 'Liberado';
+          alvo.dataLiberacao =
+            new Date().toISOString();
+          alvo.responsavelLiberacao =
+            responsavelLiberacao.trim();
+          alvo.justificativaLiberacao =
+            justificativa.trim();
+
+          localStorage.setItem(
+            CHAVE_ADMIN,
+            JSON.stringify(registros)
+          );
+
+          const veiculo = data.find(
+            v => v[0] === registro.veiculo
+          );
+
+          if (veiculo) {
+            if (temViagemAberta(registro.veiculo)) {
+              veiculo[3] = 'Em uso';
+            } else if (
+              temOcorrenciaBloqueante(registro.veiculo) ||
+              temBloqueioAdmin(registro.veiculo)
+            ) {
+              veiculo[3] = 'Bloqueado';
+            } else {
+              veiculo[3] = 'Disponível';
+            }
+
+            saveVehicles();
+          }
+
+          refresh();
+          atualizarPainel();
+
+          if (temOcorrenciaBloqueante(
+            registro.veiculo
+          )) {
+            mensagem(
+              'Bloqueio administrativo liberado. ' +
+              'O veículo permanece bloqueado por ocorrência.'
+            );
+          } else {
+            mensagem(
+              'Liberação administrativa registrada.'
+            );
+          }
+        } catch (erro) {
+          mensagem(
+            'Erro ao registrar a liberação.'
+          );
+        }
+      });
+
+      card.append(
+        titulo,
+        motivo,
+        responsavel,
+        dataRegistro,
+        situacao,
+        liberar
+      );
+
+      lista.appendChild(card);
+    });
+  }
+
+  function atualizarPainel() {
+    preencherVeiculos();
+    listarBloqueios();
+  }
+
+  el('ba-bloquear').addEventListener('click', () => {
+    const veiculo = el('ba-veiculo').value;
+    const responsavel =
+      el('ba-responsavel').value.trim();
+    const motivo = el('ba-motivo').value.trim();
+
+    if (!veiculo || !responsavel || !motivo) {
+      mensagem(
+        'Selecione o veículo e preencha responsável e motivo.'
+      );
+      return;
+    }
+
+    if (!data.some(v => v[0] === veiculo)) {
+      mensagem('Veículo não encontrado.');
+      return;
+    }
+
+    try {
+      if (temBloqueioAdmin(veiculo)) {
+        mensagem(
+          'Já existe bloqueio administrativo ativo.'
+        );
+        return;
+      }
+
+      if (!confirm(
+        'Bloquear administrativamente ' +
+        veiculo + '?'
+      )) return;
+
+      const registros = ler(CHAVE_ADMIN);
+
+      registros.push({
+        id: 'BA-' + Date.now() + '-' +
+          Math.random().toString(36).slice(2, 8),
+        veiculo,
+        responsavel,
+        motivo,
+        situacao: 'Ativo',
+        dataRegistro: new Date().toISOString(),
+        dataLiberacao: null,
+        responsavelLiberacao: null,
+        justificativaLiberacao: null
+      });
+
+      localStorage.setItem(
+        CHAVE_ADMIN,
+        JSON.stringify(registros)
+      );
+
+      aplicarBloqueios();
+      refresh();
+
+      el('ba-responsavel').value = '';
+      el('ba-motivo').value = '';
+
+      atualizarPainel();
+
+      mensagem(
+        'Bloqueio administrativo registrado.'
+      );
+    } catch (erro) {
+      mensagem('Erro ao salvar o bloqueio.');
+    }
+  });
+
+  el('ba-atualizar').addEventListener(
+    'click',
+    atualizarPainel
+  );
+
+  // Mantem o bloqueio apos as rotinas anteriores
+  // de conciliacao da frota.
+  const refreshAnterior = window.refresh;
+
+  window.refresh = function() {
+    refreshAnterior();
+    aplicarBloqueios();
+  };
+
+  // Trava adicional para o formulario de retirada.
+  const botaoRetirada =
+    document.getElementById('vu-confirmar');
+
+  if (botaoRetirada) {
+    botaoRetirada.addEventListener(
+      'click',
+      function(evento) {
+        const tipo = el('vu-tipo')?.value;
+        const veiculo = el('vu-veiculo')?.value;
+
+        if (
+          tipo === 'Retirada' &&
+          veiculo &&
+          temBloqueioAdmin(veiculo)
+        ) {
+          evento.preventDefault();
+          evento.stopImmediatePropagation();
+
+          const resultado = el('vu-resultado');
+
+          if (resultado) {
+            resultado.textContent =
+              'Retirada impedida: veículo com ' +
+              'bloqueio administrativo ativo.';
+          }
+        }
+      },
+      true
+    );
+  }
+
+  // Reaplica a regra apos recarregar a pagina.
+  try {
+    aplicarBloqueios();
+    atualizarPainel();
+  } catch (erro) {
+    mensagem(
+      'Não foi possível inicializar os bloqueios.'
+    );
+  }
+})();
+
 </script>
 </body>
 </html>
