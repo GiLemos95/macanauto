@@ -3987,6 +3987,519 @@ renderFleet();
   atualizarChecklists();
 })();
 
+/* MACANAUTO v0.4.9 - PAINEL GERENCIAL COM GRAFICOS */
+(function iniciarGraficos() {
+  if (document.getElementById('rg-v049')) return;
+
+  const secao = document.getElementById('reports');
+  if (!secao) return;
+
+  const CHAVE_VIAGENS = 'macanauto_demo_retiradas_v042';
+  const CHAVE_OCORRENCIAS = 'macanauto_demo_ocorrencias_v045';
+
+  const cores = {
+    marrom: '#522A00',
+    verde: '#6FB64E',
+    bege: '#D5B899',
+    vermelho: '#B64E4E',
+    cinza: '#8B9199'
+  };
+
+  const estilo = document.createElement('style');
+  estilo.textContent = `
+    #rg-v049 {
+      margin-top: 22px;
+      font-family: Inter, Arial, sans-serif;
+    }
+    #rg-v049 .rg-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    #rg-v049 .rg-card {
+      background: #fff;
+      border: 1px solid #e8e2da;
+      border-radius: 16px;
+      padding: 20px;
+      min-width: 0;
+    }
+    #rg-v049 h3 {
+      color: #522A00;
+      margin: 0 0 8px;
+    }
+    #rg-v049 .rg-sub {
+      color: #777;
+      font-size: 13px;
+      margin-bottom: 18px;
+    }
+    #rg-v049 .rg-item {
+      margin-bottom: 17px;
+    }
+    #rg-v049 .rg-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+    #rg-v049 .rg-top strong {
+      white-space: nowrap;
+    }
+    #rg-v049 .rg-trilha {
+      height: 12px;
+      background: #f0ede8;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    #rg-v049 .rg-barra {
+      height: 100%;
+      border-radius: 99px;
+      transition: width .25s ease;
+    }
+    #rg-v049 .rg-vazio {
+      color: #777;
+      font-size: 13px;
+      padding: 16px 0;
+    }
+    #rg-v049 .rg-legenda {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 14px;
+      font-size: 12px;
+    }
+    #rg-v049 .rg-legenda span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #rg-v049 .rg-bolinha {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    #rg-v049 .rg-empilhada {
+      display: flex;
+      height: 26px;
+      border-radius: 99px;
+      overflow: hidden;
+      background: #f0ede8;
+      margin: 18px 0 8px;
+    }
+    #rg-v049 .rg-empilhada > div {
+      height: 100%;
+    }
+    @media (max-width: 760px) {
+      #rg-v049 .rg-grid {
+        grid-template-columns: 1fr;
+      }
+      #rg-v049 .rg-card {
+        padding: 15px;
+      }
+    }
+  `;
+  document.head.appendChild(estilo);
+
+  const painel = document.createElement('div');
+  painel.id = 'rg-v049';
+
+  painel.innerHTML = `
+    <h2 style="color:#522A00">Painel Visual da Frota</h2>
+    <p class="muted">
+      Gráficos baseados nos registros e filtros
+      dos Relatórios Gerenciais.
+    </p>
+
+    <div class="rg-grid">
+      <div class="rg-card">
+        <h3>Viagens por veículo</h3>
+        <p class="rg-sub">
+          Quantidade de retiradas no período.
+        </p>
+        <div id="rg-viagens"></div>
+      </div>
+
+      <div class="rg-card">
+        <h3>Quilometragem por veículo</h3>
+        <p class="rg-sub">
+          Apenas viagens concluídas.
+        </p>
+        <div id="rg-km"></div>
+      </div>
+
+      <div class="rg-card">
+        <h3>Situação das ocorrências</h3>
+        <p class="rg-sub">
+          Ocorrências abertas no período filtrado,
+          agrupadas pela situação atual.
+        </p>
+        <div id="rg-ocorrencias"></div>
+      </div>
+
+      <div class="rg-card">
+        <h3>Disponibilidade da frota</h3>
+        <p class="rg-sub">
+          Situação atual dos veículos cadastrados.
+          Não depende do filtro de datas.
+        </p>
+        <div id="rg-frota"></div>
+      </div>
+    </div>
+
+    <p id="rg-aviso" class="muted"
+      style="margin-top:14px" role="status"></p>
+  `;
+
+  // Insere os graficos antes da exportacao CSV.
+  const exportacao = document.getElementById(
+    'rp-exportar-viagens'
+  );
+
+  const cardExportacao = exportacao
+    ? exportacao.closest('.card')
+    : null;
+
+  if (cardExportacao && cardExportacao.parentNode === secao) {
+    secao.insertBefore(painel, cardExportacao);
+  } else {
+    secao.appendChild(painel);
+  }
+
+  const el = id => document.getElementById(id);
+
+  function ler(chave) {
+    const registros = JSON.parse(
+      localStorage.getItem(chave) || '[]'
+    );
+
+    if (!Array.isArray(registros)) {
+      throw new Error('Dados locais inválidos');
+    }
+
+    return registros;
+  }
+
+  function diaLocal(valor) {
+    if (!valor) return '';
+
+    const d = new Date(valor);
+    if (Number.isNaN(d.getTime())) return '';
+
+    return [
+      d.getFullYear(),
+      String(d.getMonth() + 1).padStart(2, '0'),
+      String(d.getDate()).padStart(2, '0')
+    ].join('-');
+  }
+
+  function noPeriodo(valor, inicio, fim) {
+    const dia = diaLocal(valor);
+
+    if (!dia) return !inicio && !fim;
+
+    return (!inicio || dia >= inicio) &&
+      (!fim || dia <= fim);
+  }
+
+  function numero(valor) {
+    return new Intl.NumberFormat('pt-BR', {
+      maximumFractionDigits: 0
+    }).format(valor);
+  }
+
+  function criarElemento(tag, classe, texto) {
+    const elemento = document.createElement(tag);
+
+    if (classe) elemento.className = classe;
+    if (texto !== undefined) {
+      elemento.textContent = String(texto);
+    }
+
+    return elemento;
+  }
+
+  function desenharBarras(id, itens, cor, unidade) {
+    const destino = el(id);
+    destino.replaceChildren();
+
+    if (!itens.length || itens.every(i => i.valor === 0)) {
+      destino.appendChild(
+        criarElemento(
+          'p',
+          'rg-vazio',
+          'Sem dados para os filtros selecionados.'
+        )
+      );
+      return;
+    }
+
+    const maximo = Math.max(...itens.map(i => i.valor), 1);
+
+    itens.forEach(item => {
+      const linha = criarElemento('div', 'rg-item');
+      const topo = criarElemento('div', 'rg-top');
+
+      const nome = criarElemento('span', '', item.nome);
+      const valor = criarElemento(
+        'strong',
+        '',
+        numero(item.valor) + (unidade ? ' ' + unidade : '')
+      );
+
+      topo.append(nome, valor);
+
+      const trilha = criarElemento('div', 'rg-trilha');
+      const barra = criarElemento('div', 'rg-barra');
+
+      barra.style.width =
+        (item.valor / maximo * 100).toFixed(2) + '%';
+      barra.style.background = cor;
+
+      trilha.appendChild(barra);
+      linha.append(topo, trilha);
+      destino.appendChild(linha);
+    });
+  }
+
+  function desenharDistribuicao(id, itens) {
+    const destino = el(id);
+    destino.replaceChildren();
+
+    const total = itens.reduce(
+      (soma, item) => soma + item.valor,
+      0
+    );
+
+    if (!total) {
+      destino.appendChild(
+        criarElemento(
+          'p',
+          'rg-vazio',
+          'Nenhum registro encontrado.'
+        )
+      );
+      return;
+    }
+
+    const destaque = criarElemento(
+      'div',
+      '',
+      numero(total) + ' registros'
+    );
+    destaque.style.fontSize = '24px';
+    destaque.style.fontWeight = '700';
+    destaque.style.color = cores.marrom;
+
+    const barra = criarElemento('div', 'rg-empilhada');
+    const legenda = criarElemento('div', 'rg-legenda');
+
+    itens.forEach(item => {
+      if (item.valor === 0) return;
+
+      const parte = document.createElement('div');
+      parte.style.width =
+        (item.valor / total * 100).toFixed(2) + '%';
+      parte.style.background = item.cor;
+      parte.title =
+        item.nome + ': ' + numero(item.valor);
+
+      barra.appendChild(parte);
+
+      const rotulo = document.createElement('span');
+      const bolinha = criarElemento('i', 'rg-bolinha');
+      bolinha.style.background = item.cor;
+
+      rotulo.append(
+        bolinha,
+        document.createTextNode(
+          item.nome + ': ' + numero(item.valor)
+        )
+      );
+
+      legenda.appendChild(rotulo);
+    });
+
+    destino.append(destaque, barra, legenda);
+  }
+
+  function atualizarGraficos() {
+    const inicio = el('rp-inicio').value;
+    const fim = el('rp-fim').value;
+    const veiculo = el('rp-veiculo').value;
+
+    if (inicio && fim && inicio > fim) {
+      el('rg-aviso').textContent =
+        'Período inválido. Corrija as datas.';
+      return;
+    }
+
+    let viagens, ocorrencias;
+
+    try {
+      viagens = ler(CHAVE_VIAGENS);
+      ocorrencias = ler(CHAVE_OCORRENCIAS);
+    } catch (erro) {
+      el('rg-aviso').textContent =
+        'Não foi possível ler os dados locais.';
+      return;
+    }
+
+    viagens = viagens.filter(r =>
+      (!veiculo || r.veiculo === veiculo) &&
+      noPeriodo(r.dataRetirada, inicio, fim)
+    );
+
+    ocorrencias = ocorrencias.filter(r =>
+      (!veiculo || r.veiculo === veiculo) &&
+      noPeriodo(r.dataRegistro, inicio, fim)
+    );
+
+    const porVeiculo = new Map();
+
+    viagens.forEach(r => {
+      const nome = r.veiculo || 'Não identificado';
+
+      if (!porVeiculo.has(nome)) {
+        porVeiculo.set(nome, {
+          nome,
+          viagens: 0,
+          km: 0
+        });
+      }
+
+      const item = porVeiculo.get(nome);
+      item.viagens++;
+
+      if (r.situacao === 'Devolvido') {
+        const inicial = Number(r.kmInicial);
+        const final = Number(r.kmFinal);
+
+        if (
+          Number.isFinite(inicial) &&
+          Number.isFinite(final) &&
+          final >= inicial
+        ) {
+          item.km += final - inicial;
+        }
+      }
+    });
+
+    const agrupados = [...porVeiculo.values()];
+
+    desenharBarras(
+      'rg-viagens',
+      agrupados
+        .sort((a, b) => b.viagens - a.viagens)
+        .map(r => ({
+          nome: r.nome,
+          valor: r.viagens
+        })),
+      cores.marrom,
+      ''
+    );
+
+    desenharBarras(
+      'rg-km',
+      [...agrupados]
+        .sort((a, b) => b.km - a.km)
+        .map(r => ({
+          nome: r.nome,
+          valor: r.km
+        })),
+      cores.verde,
+      'km'
+    );
+
+    desenharDistribuicao('rg-ocorrencias', [
+      {
+        nome: 'Abertas',
+        valor: ocorrencias.filter(
+          r => r.situacao === 'Aberta'
+        ).length,
+        cor: cores.vermelho
+      },
+      {
+        nome: 'Resolvidas',
+        valor: ocorrencias.filter(
+          r => r.situacao === 'Resolvida'
+        ).length,
+        cor: cores.verde
+      },
+      {
+        nome: 'Outras',
+        valor: ocorrencias.filter(
+          r => !['Aberta', 'Resolvida'].includes(
+            r.situacao
+          )
+        ).length,
+        cor: cores.cinza
+      }
+    ]);
+
+    // Frota atual: propositalmente sem filtros.
+    desenharDistribuicao('rg-frota', [
+      {
+        nome: 'Disponíveis',
+        valor: data.filter(
+          v => v[3] === 'Disponível'
+        ).length,
+        cor: cores.verde
+      },
+      {
+        nome: 'Em uso',
+        valor: data.filter(
+          v => v[3] === 'Em uso'
+        ).length,
+        cor: cores.marrom
+      },
+      {
+        nome: 'Bloqueados',
+        valor: data.filter(
+          v => v[3] === 'Bloqueado'
+        ).length,
+        cor: cores.vermelho
+      },
+      {
+        nome: 'Outros',
+        valor: data.filter(
+          v => ![
+            'Disponível',
+            'Em uso',
+            'Bloqueado'
+          ].includes(v[3])
+        ).length,
+        cor: cores.cinza
+      }
+    ]);
+
+    el('rg-aviso').textContent =
+      'Gráficos atualizados com os filtros do relatório.';
+  }
+
+  // Atualiza depois da geracao do relatorio existente.
+  el('rp-atualizar').addEventListener(
+    'click', atualizarGraficos
+  );
+
+  el('rp-limpar').addEventListener(
+    'click', atualizarGraficos
+  );
+
+  const botaoRelatorios = document.querySelector(
+    'nav [data-page="reports"]'
+  );
+
+  if (botaoRelatorios) {
+    botaoRelatorios.addEventListener(
+      'click', atualizarGraficos
+    );
+  }
+
+  atualizarGraficos();
+})();
+
 </script>
 </body>
 </html>
