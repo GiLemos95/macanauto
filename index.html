@@ -3642,6 +3642,351 @@ renderFleet();
   gerarRelatorio();
 })();
 
+/* MACANAUTO v0.4.8 - HISTORICO DOS CHECKLISTS */
+(function iniciarHistoricoChecklist() {
+  if (document.getElementById('hc-v048')) return;
+
+  const historico = document.getElementById('history');
+  if (!historico) return;
+
+  const CHAVE = 'macanauto_demo_retiradas_v042';
+
+  const painel = document.createElement('div');
+  painel.id = 'hc-v048';
+  painel.className = 'card';
+  painel.style.marginTop = '22px';
+
+  painel.innerHTML = `
+    <h2 style="color:#522a00">
+      Consulta dos checklists
+    </h2>
+
+    <p class="muted">
+      Avaliações individuais realizadas na retirada
+      e na devolução dos veículos.
+    </p>
+
+    <div class="two">
+      <div class="field">
+        <label for="hc-veiculo">Veículo</label>
+        <select id="hc-veiculo"></select>
+      </div>
+
+      <div class="field">
+        <label for="hc-etapa">Etapa da vistoria</label>
+        <select id="hc-etapa">
+          <option value="">Retirada e devolução</option>
+          <option value="Retirada">Retirada</option>
+          <option value="Devolução">Devolução</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button type="button" class="secondary"
+        id="hc-atualizar">
+        Atualizar checklists
+      </button>
+    </div>
+
+    <p id="hc-mensagem" role="status"></p>
+
+    <div id="hc-lista"
+      style="display:grid;gap:14px"></div>
+  `;
+
+  historico.appendChild(painel);
+
+  const el = id => document.getElementById(id);
+
+  function lerRegistros() {
+    const registros = JSON.parse(
+      localStorage.getItem(CHAVE) || '[]'
+    );
+
+    if (!Array.isArray(registros)) {
+      throw new Error('Histórico inválido');
+    }
+
+    return registros;
+  }
+
+  function formatarData(valor) {
+    if (!valor) return 'Não registrada';
+
+    const data = new Date(valor);
+
+    return Number.isNaN(data.getTime())
+      ? 'Data inválida'
+      : data.toLocaleString('pt-BR');
+  }
+
+  function campo(container, titulo, valor) {
+    const linha = document.createElement('p');
+
+    const rotulo = document.createElement('strong');
+    rotulo.textContent = titulo + ': ';
+
+    const conteudo = document.createElement('span');
+    conteudo.textContent = String(valor ?? 'Não informado');
+
+    linha.append(rotulo, conteudo);
+    container.appendChild(linha);
+  }
+
+  function normalizarChecklist(valor) {
+    // Versoes anteriores armazenavam apenas um texto.
+    if (Array.isArray(valor)) return valor;
+
+    if (typeof valor === 'string' && valor.trim()) {
+      return [{
+        item: 'Avaliação geral (versão anterior)',
+        condicao: valor,
+        descricao: ''
+      }];
+    }
+
+    return [];
+  }
+
+  function preencherVeiculos(registros) {
+    const seletor = el('hc-veiculo');
+    const anterior = seletor.value;
+
+    seletor.replaceChildren();
+
+    const todos = document.createElement('option');
+    todos.value = '';
+    todos.textContent = 'Todos os veículos';
+    seletor.appendChild(todos);
+
+    const veiculos = [
+      ...new Set(
+        registros.map(r => r.veiculo).filter(Boolean)
+      )
+    ].sort();
+
+    veiculos.forEach(id => {
+      const opcao = document.createElement('option');
+      opcao.value = id;
+      opcao.textContent = id;
+      seletor.appendChild(opcao);
+    });
+
+    if (veiculos.includes(anterior)) {
+      seletor.value = anterior;
+    }
+  }
+
+  function montarAvaliacao(registro, etapa, itens) {
+    const card = document.createElement('article');
+    card.className = 'card';
+
+    const titulo = document.createElement('h3');
+    titulo.style.color = '#522a00';
+    titulo.style.marginTop = '0';
+    titulo.textContent =
+      (registro.veiculo || 'Veículo') + ' — ' + etapa;
+
+    card.appendChild(titulo);
+
+    campo(card, 'Motorista', registro.motorista || 'Não informado');
+
+    campo(
+      card,
+      'Data',
+      formatarData(
+        etapa === 'Retirada'
+          ? registro.dataRetirada
+          : registro.dataDevolucao
+      )
+    );
+
+    const totalNaoConformes = itens.filter(
+      item => item.condicao === 'Não conforme'
+    ).length;
+
+    const resumo = document.createElement('p');
+    resumo.className = 'muted';
+    resumo.textContent =
+      itens.length + ' item(ns) avaliados · ' +
+      totalNaoConformes + ' não conformidade(s)';
+
+    card.appendChild(resumo);
+
+    const detalhes = document.createElement('details');
+
+    const cabecalho = document.createElement('summary');
+    cabecalho.textContent = 'Visualizar avaliação completa';
+    cabecalho.style.cursor = 'pointer';
+    cabecalho.style.fontWeight = '700';
+    cabecalho.style.color = '#522a00';
+
+    detalhes.appendChild(cabecalho);
+
+    const tabelaWrapper = document.createElement('div');
+    tabelaWrapper.style.overflowX = 'auto';
+    tabelaWrapper.style.marginTop = '12px';
+
+    const tabela = document.createElement('table');
+
+    const thead = document.createElement('thead');
+    const trCabecalho = document.createElement('tr');
+
+    ['Item avaliado', 'Condição', 'Descrição'].forEach(
+      nome => {
+        const th = document.createElement('th');
+        th.textContent = nome;
+        trCabecalho.appendChild(th);
+      }
+    );
+
+    thead.appendChild(trCabecalho);
+    tabela.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    itens.forEach(item => {
+      const tr = document.createElement('tr');
+
+      const valores = [
+        item.item || 'Item não identificado',
+        item.condicao || 'Não informada',
+        item.descricao || '—'
+      ];
+
+      valores.forEach(valor => {
+        const td = document.createElement('td');
+        td.textContent = valor;
+        tr.appendChild(td);
+      });
+
+      if (item.condicao === 'Não conforme') {
+        tr.style.background = '#fff1eb';
+      }
+
+      tbody.appendChild(tr);
+    });
+
+    tabela.appendChild(tbody);
+    tabelaWrapper.appendChild(tabela);
+    detalhes.appendChild(tabelaWrapper);
+    card.appendChild(detalhes);
+
+    return card;
+  }
+
+  function atualizarChecklists() {
+    const lista = el('hc-lista');
+    lista.replaceChildren();
+
+    let registros;
+
+    try {
+      registros = lerRegistros();
+    } catch (erro) {
+      el('hc-mensagem').textContent =
+        'Não foi possível consultar os registros locais.';
+      return;
+    }
+
+    preencherVeiculos(registros);
+
+    const veiculo = el('hc-veiculo').value;
+    const etapa = el('hc-etapa').value;
+
+    const avaliacoes = [];
+
+    registros.forEach(registro => {
+      if (veiculo && registro.veiculo !== veiculo) {
+        return;
+      }
+
+      if (!etapa || etapa === 'Retirada') {
+        const itens = normalizarChecklist(
+          registro.checklistRetirada
+        );
+
+        if (itens.length) {
+          avaliacoes.push({
+            registro,
+            etapa: 'Retirada',
+            itens,
+            data: registro.dataRetirada
+          });
+        }
+      }
+
+      if (!etapa || etapa === 'Devolução') {
+        const itens = normalizarChecklist(
+          registro.checklistDevolucao
+        );
+
+        if (itens.length) {
+          avaliacoes.push({
+            registro,
+            etapa: 'Devolução',
+            itens,
+            data: registro.dataDevolucao
+          });
+        }
+      }
+    });
+
+    avaliacoes.sort((a, b) =>
+      (new Date(b.data).getTime() || 0) -
+      (new Date(a.data).getTime() || 0)
+    );
+
+    el('hc-mensagem').textContent =
+      avaliacoes.length + ' avaliação(ões) encontrada(s).';
+
+    if (!avaliacoes.length) {
+      const vazio = document.createElement('p');
+      vazio.className = 'muted';
+      vazio.textContent =
+        'Nenhum checklist encontrado para os filtros.';
+      lista.appendChild(vazio);
+      return;
+    }
+
+    avaliacoes.forEach(avaliacao => {
+      lista.appendChild(
+        montarAvaliacao(
+          avaliacao.registro,
+          avaliacao.etapa,
+          avaliacao.itens
+        )
+      );
+    });
+  }
+
+  el('hc-veiculo').addEventListener(
+    'change', atualizarChecklists
+  );
+
+  el('hc-etapa').addEventListener(
+    'change', atualizarChecklists
+  );
+
+  el('hc-atualizar').addEventListener(
+    'click', atualizarChecklists
+  );
+
+  // Atualiza ao entrar no historico.
+  const botaoHistorico = document.querySelector(
+    'nav [data-page="history"]'
+  );
+
+  if (botaoHistorico) {
+    botaoHistorico.addEventListener(
+      'click', atualizarChecklists
+    );
+  }
+
+  atualizarChecklists();
+})();
+
 </script>
 </body>
 </html>
