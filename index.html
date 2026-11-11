@@ -1178,6 +1178,427 @@ renderFleet();
   });
 })();
 
+/* MACANAUTO v0.4.3 - VISTORIA UNIFICADA */
+
+(function iniciarVistoriaUnificada() {
+  const secao = document.getElementById('inspection');
+  if (!secao || document.getElementById('vistoria-unificada')) return;
+
+  const CHAVE = 'macanauto_demo_retiradas_v042';
+
+  // Esconde os dois formularios anteriores.
+  const formularioAntigo = secao.querySelector('.card');
+  if (formularioAntigo) formularioAntigo.classList.add('hidden');
+
+  const retiradaAntiga = document.getElementById('retirada-demo');
+  if (retiradaAntiga) retiradaAntiga.classList.add('hidden');
+
+  const avisoAntigo = secao.querySelector('.notice');
+  if (avisoAntigo) avisoAntigo.classList.add('hidden');
+
+  const painel = document.createElement('div');
+  painel.id = 'vistoria-unificada';
+  painel.className = 'card';
+
+  painel.innerHTML = `
+    <h2>Vistoria veicular</h2>
+    <p class="muted">
+      Demonstração local. Use somente dados fictícios.
+      Fotografias não serão armazenadas.
+    </p>
+
+    <div class="two">
+      <div class="field">
+        <label for="vu-tipo">Tipo de operação</label>
+        <select id="vu-tipo">
+          <option value="Retirada">Retirada</option>
+          <option value="Devolução">Devolução</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="vu-veiculo">Veículo</label>
+        <select id="vu-veiculo"></select>
+      </div>
+    </div>
+
+    <p id="vu-status" class="notice" role="status"></p>
+
+    <div id="vu-campos-retirada">
+      <div class="two">
+        <div class="field">
+          <label for="vu-motorista">Motorista</label>
+          <input id="vu-motorista" maxlength="80"
+            placeholder="Motorista Teste 01">
+        </div>
+
+        <div class="field">
+          <label for="vu-destino">Destino</label>
+          <input id="vu-destino" maxlength="120"
+            placeholder="Fazenda Teste">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="vu-finalidade">Finalidade da viagem</label>
+        <textarea id="vu-finalidade" rows="2"
+          maxlength="500"></textarea>
+      </div>
+    </div>
+
+    <div id="vu-campos-devolucao" class="hidden">
+      <div class="field">
+        <label for="vu-combustivel">Combustível na devolução</label>
+        <select id="vu-combustivel">
+          <option value="Cheio">Tanque cheio</option>
+          <option value="Nao cheio">Tanque não está cheio</option>
+        </select>
+      </div>
+
+      <div class="field hidden" id="vu-caixa-justificativa">
+        <label for="vu-justificativa">Justificativa</label>
+        <textarea id="vu-justificativa" rows="2"
+          maxlength="500"></textarea>
+      </div>
+    </div>
+
+    <div class="two">
+      <div class="field">
+        <label for="vu-km">Odômetro (km)</label>
+        <input id="vu-km" type="number" min="0" step="1"
+          placeholder="Informe a quilometragem">
+      </div>
+
+      <div class="field">
+        <label for="vu-foto">Fotografia de teste</label>
+        <input id="vu-foto" type="file" accept="image/*"
+          capture="environment">
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="vu-checklist">Condições gerais do veículo</label>
+      <select id="vu-checklist">
+        <option value="">Selecione</option>
+        <option value="Sem avarias aparentes">
+          Sem avarias aparentes
+        </option>
+        <option value="Com observacoes">
+          Possui observações
+        </option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="vu-observacoes">Observações</label>
+      <textarea id="vu-observacoes" rows="3"
+        maxlength="1000"></textarea>
+    </div>
+
+    <button class="primary" id="vu-confirmar" type="button">
+      Confirmar retirada
+    </button>
+
+    <p id="vu-resultado" role="status" class="muted"></p>
+  `;
+
+  secao.appendChild(painel);
+
+  const campo = id => document.getElementById(id);
+  const tipo = campo('vu-tipo');
+  const veiculo = campo('vu-veiculo');
+  const botao = campo('vu-confirmar');
+  const resultado = campo('vu-resultado');
+
+  function lerRegistros() {
+    const valor = JSON.parse(localStorage.getItem(CHAVE) || '[]');
+    if (!Array.isArray(valor)) {
+      throw new Error('Formato de registros inválido.');
+    }
+    return valor;
+  }
+
+  function retiradaAberta(registros, identificacao) {
+    return registros.find(r =>
+      r.veiculo === identificacao &&
+      r.situacao === 'Em uso'
+    );
+  }
+
+  function atualizarTela() {
+    const identificacaoAnterior = veiculo.value;
+    veiculo.replaceChildren();
+
+    data.forEach(v => {
+      const opcao = document.createElement('option');
+      opcao.value = v[0];
+      opcao.textContent = v[0] + ' — ' + v[1];
+      veiculo.appendChild(opcao);
+    });
+
+    if (data.some(v => v[0] === identificacaoAnterior)) {
+      veiculo.value = identificacaoAnterior;
+    }
+
+    const devolucao = tipo.value === 'Devolução';
+
+    campo('vu-campos-retirada').classList.toggle(
+      'hidden', devolucao
+    );
+    campo('vu-campos-devolucao').classList.toggle(
+      'hidden', !devolucao
+    );
+
+    campo('vu-caixa-justificativa').classList.toggle(
+      'hidden',
+      !devolucao ||
+      campo('vu-combustivel').value !== 'Nao cheio'
+    );
+
+    botao.textContent = devolucao
+      ? 'Confirmar devolução'
+      : 'Confirmar retirada';
+
+    const selecionado = data.find(v => v[0] === veiculo.value);
+
+    if (!selecionado) {
+      campo('vu-status').textContent =
+        'Nenhum veículo cadastrado.';
+      botao.disabled = true;
+      return;
+    }
+
+    campo('vu-status').textContent =
+      'Situação atual: ' + selecionado[3];
+
+    botao.disabled = devolucao
+      ? selecionado[3] !== 'Em uso'
+      : selecionado[3] !== 'Disponível';
+  }
+
+  tipo.addEventListener('change', () => {
+    resultado.textContent = '';
+    atualizarTela();
+  });
+
+  veiculo.addEventListener('change', () => {
+    resultado.textContent = '';
+    atualizarTela();
+  });
+
+  campo('vu-combustivel').addEventListener(
+    'change', atualizarTela
+  );
+
+  botao.addEventListener('click', () => {
+    const identificacao = veiculo.value;
+    const indice = data.findIndex(v => v[0] === identificacao);
+
+    if (indice < 0) {
+      resultado.textContent = 'Veículo não encontrado.';
+      return;
+    }
+
+    const devolucao = tipo.value === 'Devolução';
+    const situacaoEsperada = devolucao
+      ? 'Em uso' : 'Disponível';
+
+    if (data[indice][3] !== situacaoEsperada) {
+      resultado.textContent =
+        'Operação não permitida para a situação atual.';
+      atualizarTela();
+      return;
+    }
+
+    const kmTexto = campo('vu-km').value.trim();
+    const km = Number(kmTexto);
+    const foto = campo('vu-foto').files[0];
+    const checklist = campo('vu-checklist').value;
+    const observacoes = campo('vu-observacoes').value.trim();
+
+    if (
+      kmTexto === '' ||
+      !Number.isSafeInteger(km) ||
+      km < 0
+    ) {
+      resultado.textContent =
+        'Informe uma quilometragem válida.';
+      return;
+    }
+
+    if (!foto || !foto.type.startsWith('image/')) {
+      resultado.textContent =
+        'Selecione uma fotografia de imagem.';
+      return;
+    }
+
+    if (!checklist) {
+      resultado.textContent =
+        'Informe as condições gerais do veículo.';
+      return;
+    }
+
+    if (checklist === 'Com observacoes' && !observacoes) {
+      resultado.textContent =
+        'Descreva as condições observadas.';
+      return;
+    }
+
+    let registros;
+
+    try {
+      registros = lerRegistros();
+    } catch (erro) {
+      resultado.textContent =
+        'Erro ao consultar o histórico local.';
+      return;
+    }
+
+    const aberta = retiradaAberta(registros, identificacao);
+    let registro;
+
+    if (devolucao) {
+      if (!aberta) {
+        resultado.textContent =
+          'Não existe retirada aberta para este veículo.';
+        return;
+      }
+
+      if (km < Number(aberta.kmInicial)) {
+        resultado.textContent =
+          'A quilometragem final não pode ser inferior à inicial.';
+        return;
+      }
+
+      const combustivel = campo('vu-combustivel').value;
+      const justificativa =
+        campo('vu-justificativa').value.trim();
+
+      if (combustivel === 'Nao cheio' && !justificativa) {
+        resultado.textContent =
+          'Informe a justificativa do tanque não cheio.';
+        return;
+      }
+
+      registro = {
+        ...aberta,
+        situacao: 'Devolvido',
+        kmFinal: km,
+        kmPercorridos: km - Number(aberta.kmInicial),
+        combustivel: combustivel,
+        justificativaCombustivel: justificativa,
+        observacoesDevolucao: observacoes,
+        checklistDevolucao: checklist,
+        dataDevolucao: new Date().toISOString()
+      };
+
+      registros = registros.map(r =>
+        r === aberta ? registro : r
+      );
+    } else {
+      if (aberta) {
+        resultado.textContent =
+          'Já existe uma retirada aberta.';
+        return;
+      }
+
+      const motorista = campo('vu-motorista').value.trim();
+      const destino = campo('vu-destino').value.trim();
+      const finalidade = campo('vu-finalidade').value.trim();
+
+      if (!motorista || !destino || !finalidade) {
+        resultado.textContent =
+          'Preencha motorista, destino e finalidade.';
+        return;
+      }
+
+      registro = {
+        id: 'DEMO-' + Date.now(),
+        veiculo: identificacao,
+        motorista: motorista,
+        destino: destino,
+        finalidade: finalidade,
+        kmInicial: km,
+        checklistRetirada: checklist,
+        observacoes: observacoes,
+        fotoSelecionada: true,
+        dataRetirada: new Date().toISOString(),
+        situacao: 'Em uso'
+      };
+
+      registros.push(registro);
+    }
+
+    const mensagem = devolucao
+      ? 'Confirmar devolução demonstrativa?'
+      : 'Confirmar retirada demonstrativa?';
+
+    if (!confirm(
+      mensagem + '\n\n' +
+      'Veículo: ' + identificacao + '\n' +
+      'Odômetro: ' + km + ' km'
+    )) return;
+
+    const registrosAnteriores =
+      localStorage.getItem(CHAVE);
+    const situacaoAnterior = data[indice][3];
+
+    try {
+      localStorage.setItem(
+        CHAVE, JSON.stringify(registros)
+      );
+
+      data[indice][3] = devolucao
+        ? 'Disponível' : 'Em uso';
+
+      if (!saveVehicles()) {
+        throw new Error('Falha ao salvar a frota.');
+      }
+    } catch (erro) {
+      data[indice][3] = situacaoAnterior;
+
+      try {
+        if (registrosAnteriores === null) {
+          localStorage.removeItem(CHAVE);
+        } else {
+          localStorage.setItem(CHAVE, registrosAnteriores);
+        }
+      } catch (falha) {
+        console.error('Falha na reversão local.', falha);
+      }
+
+      resultado.textContent =
+        'Não foi possível concluir a operação.';
+      return;
+    }
+
+    refresh();
+    atualizarTela();
+
+    resultado.textContent = devolucao
+      ? 'Devolução registrada! ' + identificacao +
+        ' voltou a ficar Disponível. Percurso: ' +
+        registro.kmPercorridos + ' km.'
+      : 'Retirada registrada! ' + identificacao +
+        ' agora está Em uso.';
+
+    campo('vu-km').value = '';
+    campo('vu-foto').value = '';
+    campo('vu-checklist').value = '';
+    campo('vu-observacoes').value = '';
+  });
+
+  // Atualiza o seletor quando a frota for alterada.
+  const atualizarOriginal = window.refresh;
+
+  window.refresh = function() {
+    atualizarOriginal();
+    atualizarTela();
+  };
+
+  atualizarTela();
+})();
+
 </script>
 </body>
 </html>
