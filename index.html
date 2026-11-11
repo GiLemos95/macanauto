@@ -1599,6 +1599,399 @@ renderFleet();
   atualizarTela();
 })();
 
+/* MACANAUTO v0.4.4 - HISTORICO DE VISTORIAS */
+
+(function iniciarHistorico() {
+  if (document.getElementById('history')) return;
+
+  const CHAVE = 'macanauto_demo_retiradas_v042';
+
+  // Adiciona a aba ao menu existente.
+  const menu = document.querySelector('nav');
+  const botaoMenu = document.createElement('button');
+  botaoMenu.dataset.page = 'history';
+  botaoMenu.textContent = '📋 Histórico de Vistorias';
+
+  const botaoOcorrencias = menu.querySelector(
+    '[data-page="incidents"]'
+  );
+
+  menu.insertBefore(botaoMenu, botaoOcorrencias);
+
+  botaoMenu.addEventListener('click', function() {
+    go('history');
+    renderHistorico();
+  });
+
+  // Cria a nova tela.
+  const secao = document.createElement('section');
+  secao.id = 'history';
+  secao.className = 'hidden';
+
+  const titulo = document.createElement('h1');
+  titulo.textContent = 'Histórico de Vistorias';
+
+  const descricao = document.createElement('p');
+  descricao.className = 'muted';
+  descricao.textContent =
+    'Movimentações demonstrativas registradas neste navegador.';
+
+  const aviso = document.createElement('div');
+  aviso.className = 'notice';
+  aviso.textContent =
+    'Histórico local de teste. Fotografias não são ' +
+    'armazenadas e os registros não são sincronizados.';
+
+  const barra = document.createElement('div');
+  barra.className = 'toolbar';
+
+  const filtroVeiculo = document.createElement('select');
+  filtroVeiculo.id = 'hist-veiculo';
+  filtroVeiculo.className = 'secondary';
+  filtroVeiculo.setAttribute('aria-label', 'Filtrar veículo');
+
+  const filtroSituacao = document.createElement('select');
+  filtroSituacao.id = 'hist-situacao';
+  filtroSituacao.className = 'secondary';
+  filtroSituacao.setAttribute('aria-label', 'Filtrar situação');
+
+  [
+    ['', 'Todas as situações'],
+    ['Em uso', 'Em uso'],
+    ['Devolvido', 'Devolvido']
+  ].forEach(function(item) {
+    const opcao = document.createElement('option');
+    opcao.value = item[0];
+    opcao.textContent = item[1];
+    filtroSituacao.appendChild(opcao);
+  });
+
+  const atualizar = document.createElement('button');
+  atualizar.className = 'secondary';
+  atualizar.textContent = '↻ Atualizar histórico';
+
+  barra.append(
+    filtroVeiculo,
+    filtroSituacao,
+    atualizar
+  );
+
+  const resumo = document.createElement('div');
+  resumo.className = 'cards';
+  resumo.style.marginBottom = '20px';
+
+  const indicadores = [
+    ['Movimentações', 'hist-total'],
+    ['Em uso', 'hist-abertas'],
+    ['Devolvidas', 'hist-concluidas']
+  ];
+
+  indicadores.forEach(function(item) {
+    const cartao = document.createElement('div');
+    cartao.className = 'card';
+
+    const rotulo = document.createElement('div');
+    rotulo.className = 'muted';
+    rotulo.textContent = item[0];
+
+    const numero = document.createElement('div');
+    numero.className = 'number';
+    numero.id = item[1];
+    numero.textContent = '0';
+
+    cartao.append(rotulo, numero);
+    resumo.appendChild(cartao);
+  });
+
+  const lista = document.createElement('div');
+  lista.id = 'hist-lista';
+  lista.style.display = 'grid';
+  lista.style.gap = '14px';
+
+  secao.append(
+    titulo,
+    descricao,
+    aviso,
+    barra,
+    resumo,
+    lista
+  );
+
+  const rodape = document.querySelector('main .footer');
+  rodape.parentNode.insertBefore(secao, rodape);
+
+  function lerHistorico() {
+    try {
+      const valor = JSON.parse(
+        localStorage.getItem(CHAVE) || '[]'
+      );
+
+      return Array.isArray(valor) ? valor : [];
+    } catch (erro) {
+      return null;
+    }
+  }
+
+  function formatarData(valor) {
+    if (!valor) return 'Não registrada';
+
+    const data = new Date(valor);
+    if (Number.isNaN(data.getTime())) {
+      return 'Data inválida';
+    }
+
+    return data.toLocaleString('pt-BR');
+  }
+
+  function adicionarCampo(container, nome, valor) {
+    const linha = document.createElement('p');
+
+    const destaque = document.createElement('strong');
+    destaque.textContent = nome + ': ';
+
+    const conteudo = document.createElement('span');
+    conteudo.textContent =
+      valor === undefined || valor === null || valor === ''
+        ? 'Não informado'
+        : String(valor);
+
+    linha.append(destaque, conteudo);
+    container.appendChild(linha);
+  }
+
+  function criarRegistro(registro) {
+    const cartao = document.createElement('article');
+    cartao.className = 'card';
+
+    const cabecalho = document.createElement('div');
+    cabecalho.style.display = 'flex';
+    cabecalho.style.justifyContent = 'space-between';
+    cabecalho.style.alignItems = 'center';
+    cabecalho.style.flexWrap = 'wrap';
+    cabecalho.style.gap = '10px';
+
+    const nome = document.createElement('h3');
+    nome.style.margin = '0';
+    nome.style.color = '#522a00';
+    nome.textContent = registro.veiculo || 'Veículo não identificado';
+
+    const situacao = document.createElement('span');
+    situacao.className = 'pill';
+    situacao.textContent = registro.situacao || 'Não informada';
+
+    cabecalho.append(nome, situacao);
+    cartao.appendChild(cabecalho);
+
+    adicionarCampo(
+      cartao,
+      'Motorista',
+      registro.motorista
+    );
+
+    adicionarCampo(
+      cartao,
+      'Retirada',
+      formatarData(registro.dataRetirada)
+    );
+
+    if (registro.dataDevolucao) {
+      adicionarCampo(
+        cartao,
+        'Devolução',
+        formatarData(registro.dataDevolucao)
+      );
+    }
+
+    const detalhes = document.createElement('details');
+    detalhes.style.marginTop = '12px';
+
+    const resumoDetalhes = document.createElement('summary');
+    resumoDetalhes.textContent = 'Ver detalhes da movimentação';
+    resumoDetalhes.style.cursor = 'pointer';
+    resumoDetalhes.style.fontWeight = '700';
+    resumoDetalhes.style.color = '#522a00';
+
+    const conteudo = document.createElement('div');
+    conteudo.style.paddingTop = '12px';
+
+    adicionarCampo(conteudo, 'Protocolo', registro.id);
+    adicionarCampo(conteudo, 'Destino', registro.destino);
+    adicionarCampo(conteudo, 'Finalidade', registro.finalidade);
+
+    adicionarCampo(
+      conteudo,
+      'Quilometragem inicial',
+      registro.kmInicial !== undefined
+        ? registro.kmInicial + ' km'
+        : null
+    );
+
+    if (registro.kmFinal !== undefined) {
+      adicionarCampo(
+        conteudo,
+        'Quilometragem final',
+        registro.kmFinal + ' km'
+      );
+
+      adicionarCampo(
+        conteudo,
+        'Distância percorrida',
+        registro.kmPercorridos !== undefined
+          ? registro.kmPercorridos + ' km'
+          : Number(registro.kmFinal) -
+            Number(registro.kmInicial) + ' km'
+      );
+    }
+
+    adicionarCampo(
+      conteudo,
+      'Condições na retirada',
+      registro.checklistRetirada
+    );
+
+    adicionarCampo(
+      conteudo,
+      'Observações na retirada',
+      registro.observacoes
+    );
+
+    if (registro.situacao === 'Devolvido') {
+      adicionarCampo(
+        conteudo,
+        'Condições na devolução',
+        registro.checklistDevolucao
+      );
+
+      adicionarCampo(
+        conteudo,
+        'Combustível',
+        registro.combustivel
+      );
+
+      if (registro.justificativaCombustivel) {
+        adicionarCampo(
+          conteudo,
+          'Justificativa do combustível',
+          registro.justificativaCombustivel
+        );
+      }
+
+      adicionarCampo(
+        conteudo,
+        'Observações na devolução',
+        registro.observacoesDevolucao
+      );
+    }
+
+    const nota = document.createElement('p');
+    nota.className = 'muted';
+    nota.style.fontSize = '.8rem';
+    nota.textContent =
+      'Registro demonstrativo. As fotografias não foram salvas.';
+
+    conteudo.appendChild(nota);
+    detalhes.append(resumoDetalhes, conteudo);
+    cartao.appendChild(detalhes);
+
+    return cartao;
+  }
+
+  function renderHistorico() {
+    const registros = lerHistorico();
+    lista.replaceChildren();
+
+    if (registros === null) {
+      const erro = document.createElement('p');
+      erro.textContent =
+        'Não foi possível ler o histórico local.';
+      lista.appendChild(erro);
+      return;
+    }
+
+    // Atualiza as opções sem perder a seleção.
+    const anterior = filtroVeiculo.value;
+    filtroVeiculo.replaceChildren();
+
+    const todos = document.createElement('option');
+    todos.value = '';
+    todos.textContent = 'Todos os veículos';
+    filtroVeiculo.appendChild(todos);
+
+    const identificacoes = [
+      ...new Set(
+        registros.map(r => r.veiculo).filter(Boolean)
+      )
+    ].sort();
+
+    identificacoes.forEach(function(id) {
+      const opcao = document.createElement('option');
+      opcao.value = id;
+      opcao.textContent = id;
+      filtroVeiculo.appendChild(opcao);
+    });
+
+    if (identificacoes.includes(anterior)) {
+      filtroVeiculo.value = anterior;
+    }
+
+    document.getElementById('hist-total').textContent =
+      registros.length;
+
+    document.getElementById('hist-abertas').textContent =
+      registros.filter(r => r.situacao === 'Em uso').length;
+
+    document.getElementById('hist-concluidas').textContent =
+      registros.filter(r => r.situacao === 'Devolvido').length;
+
+    const filtrados = registros.filter(function(r) {
+      const veiculoCorreto =
+        !filtroVeiculo.value ||
+        r.veiculo === filtroVeiculo.value;
+
+      const situacaoCorreta =
+        !filtroSituacao.value ||
+        r.situacao === filtroSituacao.value;
+
+      return veiculoCorreto && situacaoCorreta;
+    });
+
+    filtrados.sort(function(a, b) {
+      return (
+        new Date(b.dataRetirada || 0).getTime() -
+        new Date(a.dataRetirada || 0).getTime()
+      );
+    });
+
+    if (!filtrados.length) {
+      const vazio = document.createElement('div');
+      vazio.className = 'card';
+      vazio.textContent =
+        'Nenhuma movimentação encontrada.';
+      lista.appendChild(vazio);
+      return;
+    }
+
+    filtrados.forEach(function(registro) {
+      lista.appendChild(criarRegistro(registro));
+    });
+  }
+
+  filtroVeiculo.addEventListener(
+    'change', renderHistorico
+  );
+
+  filtroSituacao.addEventListener(
+    'change', renderHistorico
+  );
+
+  atualizar.addEventListener(
+    'click', renderHistorico
+  );
+
+  // Atualiza ao entrar na aba pelo menu.
+  renderHistorico();
+})();
+
 </script>
 </body>
 </html>
