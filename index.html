@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="pt-BR">
 <head>
@@ -5012,6 +5011,198 @@ renderFleet();
       'Não foi possível inicializar os bloqueios.'
     );
   }
+})();
+
+
+/* MACANAUTO v0.4.11 - DISPONIBILIDADE E CORES DA FROTA */
+(function iniciarDisponibilidadeV0411() {
+  if (document.getElementById('ma-estilo-v0411')) return;
+
+  const estilo = document.createElement('style');
+  estilo.id = 'ma-estilo-v0411';
+  estilo.textContent = `
+    #vehicles .vehicle .pill {
+      border-radius: 999px;
+      font-weight: 700;
+      padding: 6px 12px;
+    }
+    #vehicles .vehicle .pill.ma-disponivel {
+      background: #e8f5e3;
+      color: #286b25;
+      border: 1px solid #a9d49d;
+    }
+    #vehicles .vehicle .pill.ma-em-uso {
+      background: #fff2d9;
+      color: #8b5700;
+      border: 1px solid #eac77f;
+    }
+    #vehicles .vehicle .pill.ma-bloqueado {
+      background: #fce9e7;
+      color: #a02f27;
+      border: 1px solid #e9b4ae;
+    }
+    #vu-veiculo option:disabled {
+      color: #777;
+      background: #efefef;
+    }
+  `;
+  document.head.appendChild(estilo);
+
+  const el = id => document.getElementById(id);
+  const CHAVE_ADMIN = 'macanauto_demo_bloqueios_admin_v0410';
+  const CHAVE_OC = 'macanauto_demo_ocorrencias_v045';
+  const CHAVE_VIAGENS = 'macanauto_demo_retiradas_v042';
+
+  function ler(chave) {
+    try {
+      const valor = JSON.parse(localStorage.getItem(chave) || '[]');
+      return Array.isArray(valor) ? valor : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function viagemAberta(id) {
+    return ler(CHAVE_VIAGENS).some(r =>
+      r.veiculo === id && r.situacao === 'Em uso'
+    );
+  }
+
+  function bloqueioAdmin(id) {
+    return ler(CHAVE_ADMIN).some(r =>
+      r.veiculo === id && r.situacao === 'Ativo'
+    );
+  }
+
+  function ocorrenciaBloqueante(id) {
+    return ler(CHAVE_OC).some(r =>
+      r.veiculo === id &&
+      r.situacao === 'Aberta' &&
+      r.bloqueia === true
+    );
+  }
+
+  function situacaoReal(v) {
+    const id = v[0];
+    if (viagemAberta(id)) return 'Em uso';
+    if (bloqueioAdmin(id) || ocorrenciaBloqueante(id)) {
+      return 'Bloqueado';
+    }
+    return v[3];
+  }
+
+  function pintarFrota() {
+    const veiculos = Array.isArray(data) ? data : [];
+    el('vehicles')?.querySelectorAll('.vehicle').forEach(card => {
+      const id = card.querySelector('h3')?.textContent?.trim();
+      const v = veiculos.find(item => item[0] === id);
+      const selo = card.querySelector('.pill');
+      if (!v || !selo) return;
+      const situacao = situacaoReal(v);
+      selo.textContent = situacao;
+      selo.classList.remove('ma-disponivel', 'ma-em-uso', 'ma-bloqueado');
+      selo.classList.add(
+        situacao === 'Disponível' ? 'ma-disponivel' :
+        situacao === 'Em uso' ? 'ma-em-uso' : 'ma-bloqueado'
+      );
+    });
+  }
+
+  function atualizarOpcoes() {
+    const seletor = el('vu-veiculo');
+    const tipo = el('vu-tipo');
+    if (!seletor || !tipo) return;
+
+    const devolucao = tipo.value === 'Devolução';
+    let selecionadoFoiDesabilitado = false;
+    let disponiveis = 0;
+
+    Array.from(seletor.options).forEach(opcao => {
+      const v = data.find(item => item[0] === opcao.value);
+      if (!v) return;
+      const situacao = situacaoReal(v);
+      const permitido = devolucao
+        ? viagemAberta(v[0])
+        : situacao === 'Disponível' &&
+          !viagemAberta(v[0]) &&
+          !bloqueioAdmin(v[0]) &&
+          !ocorrenciaBloqueante(v[0]);
+
+      opcao.disabled = !permitido;
+      opcao.textContent = v[0] + ' — ' + v[1] +
+        (permitido ? '' : ' (' + situacao + ' — indisponível)');
+      if (permitido) disponiveis++;
+      if (!permitido && opcao.selected) selecionadoFoiDesabilitado = true;
+    });
+
+    if (selecionadoFoiDesabilitado) {
+      const primeira = Array.from(seletor.options).find(o => !o.disabled);
+      seletor.value = primeira ? primeira.value : '';
+    }
+
+    const botao = el('vu-confirmar');
+    const status = el('vu-status');
+    if (!disponiveis) {
+      seletor.value = '';
+      if (botao) botao.disabled = true;
+      if (status) status.textContent = devolucao
+        ? 'Nenhum veículo com viagem em andamento para devolução.'
+        : 'Nenhum veículo disponível para retirada.';
+    } else if (botao && seletor.value) {
+      botao.disabled = false;
+      const v = data.find(item => item[0] === seletor.value);
+      if (status && v) status.textContent =
+        'Situação atual: ' + situacaoReal(v);
+    }
+  }
+
+  // Atualiza quando as versões anteriores reconstruírem a lista.
+  const seletor = el('vu-veiculo');
+  if (seletor) {
+    new MutationObserver(atualizarOpcoes).observe(
+      seletor, { childList: true }
+    );
+  }
+
+  // Captura a troca de operação e atualiza após o código original.
+  el('vu-tipo')?.addEventListener('change', () => {
+    setTimeout(atualizarOpcoes, 0);
+  });
+
+  // Revalida após alterações de frota e bloqueios.
+  const renderAnterior = window.renderFleet;
+  if (typeof renderAnterior === 'function') {
+    window.renderFleet = function(...args) {
+      const resultado = renderAnterior.apply(this, args);
+      pintarFrota();
+      atualizarOpcoes();
+      return resultado;
+    };
+  }
+
+  const refreshAnterior = window.refresh;
+  if (typeof refreshAnterior === 'function') {
+    window.refresh = function(...args) {
+      const resultado = refreshAnterior.apply(this, args);
+      pintarFrota();
+      atualizarOpcoes();
+      return resultado;
+    };
+  }
+
+  document.addEventListener('click', evento => {
+    if (evento.target.closest(
+      '#ba-v0410, #incidents, #vistoria-unificada, #vehicleForm'
+    )) {
+      setTimeout(() => {
+        pintarFrota();
+        atualizarOpcoes();
+      }, 0);
+    }
+  });
+
+  pintarFrota();
+  atualizarOpcoes();
 })();
 
 </script>
