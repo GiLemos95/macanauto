@@ -5330,6 +5330,112 @@ renderFleet();
   aplicar();
 })();
 
+
+
+/* MacanAuto v0.4.14 — IDENTIFICACAO E RASTREABILIDADE (SIMULACAO LOCAL) */
+(() => {
+  'use strict';
+  const USERS='macanauto_demo_usuarios_v0412';
+  const ROLE='macanauto_demo_perfil_v0412';
+  const IDENTITY='macanauto_demo_identidade_v0414';
+  const LOG='macanauto_demo_rastreabilidade_v0414';
+  const TRACKED={
+    macanauto_demo_vehicles_v03:'Cadastro/alteração da frota',
+    macanauto_demo_retiradas_v042:'Retirada/devolução ou atualização de viagem',
+    macanauto_demo_ocorrencias_v045:'Registro/alteração de ocorrência',
+    macanauto_demo_bloqueios_admin_v0410:'Bloqueio/liberação administrativa',
+    macanauto_demo_usuarios_v0412:'Cadastro/alteração de usuário'
+  };
+  const $=id=>document.getElementById(id);
+  const read=(key,fallback)=>{try{const v=JSON.parse(localStorage.getItem(key)||'null');return v===null?fallback:v;}catch{return fallback;}};
+  const escapeHtml=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const control=$('us-controle');
+  if(!control) return;
+  const label=document.createElement('label');label.htmlFor='rt-ator';label.textContent='Pessoa de teste:';
+  const actor=document.createElement('select');actor.id='rt-ator';actor.setAttribute('aria-label','Pessoa responsável pela operação');
+  const notice=document.createElement('small');notice.id='rt-notice';notice.style.color='#fff';
+  control.append(label,actor,notice);
+  const style=document.createElement('style');
+  style.textContent='#rt-ator{max-width:210px;border:1px solid #d5c5b4;border-radius:9px;padding:8px;background:white;color:#522a00}#rt-tabela{width:100%;border-collapse:collapse;font-size:.88rem}#rt-tabela th,#rt-tabela td{padding:10px;border-bottom:1px solid #e7e0d8;text-align:left;vertical-align:top}#rt-tabela th{color:#522a00}#rt-filtros{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}#rt-filtros input,#rt-filtros select{padding:9px;border:1px solid #d9d2c9;border-radius:9px}';
+  document.head.append(style);
+  const nav=document.querySelector('nav');
+  const tab=document.createElement('button');tab.dataset.page='rastreabilidade';tab.textContent='🧾 Rastreabilidade';nav.append(tab);
+  const section=document.createElement('section');section.id='rastreabilidade';section.className='hidden';
+  section.innerHTML='<h1>Rastreabilidade de operações</h1><p class="muted">Demonstração local. O responsável é selecionado manualmente, sem autenticação. Os registros ficam somente neste navegador e podem ser alterados ou apagados. Não constituem trilha de auditoria segura.</p><div class="card"><h2>Operações registradas</h2><div id="rt-filtros"><input id="rt-busca" placeholder="Pesquisar responsável, operação ou origem" aria-label="Pesquisar operações"><select id="rt-tipo"><option value="">Todas as operações</option></select><button type="button" id="rt-csv" class="secondary">Exportar CSV</button></div><div style="overflow-x:auto"><table id="rt-tabela"><thead><tr><th>Data e hora</th><th>Responsável (simulado)</th><th>Perfil</th><th>Operação</th><th>Origem</th></tr></thead><tbody id="rt-linhas"></tbody></table></div><p id="rt-vazio" class="muted"></p></div>';
+  document.querySelector('main').append(section);
+  tab.addEventListener('click',()=>{go('rastreabilidade');renderLog();});
+  const roleName={admin:'Administrador',gerente:'Gerente',usuario:'Usuário'};
+  function role(){return sessionStorage.getItem(ROLE)||'admin';}
+  function users(){const v=read(USERS,[]);return Array.isArray(v)?v:[];}
+  function selected(){
+    const v=actor.value;
+    if(v==='admin'&&role()==='admin')return {id:'admin',nome:'Administrador (teste)',perfil:'admin'};
+    const u=users().find(u=>u.id===v&&u.ativo&&u.perfil===role());
+    return u?{id:u.id,nome:u.nome,perfil:u.perfil}:null;
+  }
+  function syncActors(){
+    const old=sessionStorage.getItem(IDENTITY)||'';
+    actor.replaceChildren();
+    const blank=new Option('Selecione uma pessoa','');actor.append(blank);
+    if(role()==='admin')actor.append(new Option('Administrador (teste)','admin'));
+    users().filter(u=>u.ativo&&u.perfil===role()).forEach(u=>actor.append(new Option(u.nome+(u.matricula?' · '+u.matricula:''),u.id)));
+    actor.value=Array.from(actor.options).some(o=>o.value===old)?old:'';
+    if(!actor.value&&role()==='admin')actor.value='admin';
+    sessionStorage.setItem(IDENTITY,actor.value);
+    notice.textContent=actor.value?'':'Selecione a pessoa antes de registrar operações.';
+  }
+  actor.addEventListener('change',()=>{sessionStorage.setItem(IDENTITY,actor.value);notice.textContent=actor.value?'':'Selecione a pessoa antes de registrar operações.';});
+  $('us-perfil').addEventListener('change',()=>{sessionStorage.removeItem(IDENTITY);syncActors();});
+  function logRows(){const a=read(LOG,[]);return Array.isArray(a)?a:[];}
+  function record(kind,source){
+    const person=selected();
+    const a=logRows();a.unshift({at:new Date().toISOString(),actorId:person?.id||null,actor:person?.nome||'Não identificado',profile:roleName[role()]||role(),operation:kind,source});
+    try{nativeSet.call(localStorage,LOG,JSON.stringify(a.slice(0,500)));}catch(e){console.warn('Registro local de rastreabilidade indisponível',e);}
+    if(!section.classList.contains('hidden'))renderLog();
+  }
+  // Captura somente alterações efetivamente gravadas pelas funções existentes.
+  // Sem interceptar leitura, sem gravar conteúdo pessoal dos registros.
+  const nativeSet=Storage.prototype.setItem;
+  Storage.prototype.setItem=function(key,value){
+    const tracking=this===localStorage&&Object.prototype.hasOwnProperty.call(TRACKED,key);
+    const before=tracking?this.getItem(key):null;
+    const result=nativeSet.call(this,key,value);
+    if(tracking&&before!==String(value)){
+      record(TRACKED[key],key);
+      if(key===USERS)syncActors();
+    }
+    return result;
+  };
+  function filtered(){
+    const q=$('rt-busca').value.trim().toLocaleLowerCase('pt-BR'),kind=$('rt-tipo').value;
+    return logRows().filter(r=>(!kind||r.operation===kind)&&(!q||[r.actor,r.profile,r.operation,r.source].some(x=>String(x||'').toLocaleLowerCase('pt-BR').includes(q))));
+  }
+  function renderLog(){
+    const kinds=[...new Set(logRows().map(x=>x.operation))];
+    const s=$('rt-tipo'),previous=s.value;
+    s.replaceChildren(new Option('Todas as operações',''));
+    kinds.forEach(k=>s.append(new Option(k,k)));s.value=kinds.includes(previous)?previous:'';
+    const body=$('rt-linhas');body.replaceChildren();
+    const rows=filtered();$('rt-vazio').textContent=rows.length?'':'Nenhuma operação encontrada.';
+    rows.forEach(r=>{
+      const tr=document.createElement('tr');
+      [new Date(r.at).toLocaleString('pt-BR'),r.actor,r.profile,r.operation,r.source].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td);});
+      body.append(tr);
+    });
+  }
+  $('rt-busca').addEventListener('input',renderLog);
+  $('rt-tipo').addEventListener('change',renderLog);
+  $('rt-csv').addEventListener('click',()=>{
+    const quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+    const rows=[['Data/hora','Responsável simulado','Perfil','Operação','Origem'],...filtered().map(r=>[r.at,r.actor,r.profile,r.operation,r.source])];
+    const csv='\uFEFF'+rows.map(row=>row.map(quote).join(';')).join('\r\n');
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+    const a=document.createElement('a');a.href=url;a.download='macanauto_rastreabilidade_simulada.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  });
+  syncActors();
+  renderLog();
+})();
+
 </script>
 </body>
 </html>
