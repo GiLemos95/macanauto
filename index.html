@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#522a00">
-  <title>MacanAuto | Demonstração v0.3</title>
+  <title>MacanAuto | Demonstração v0.4.12</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -272,7 +272,7 @@
     <strong>🚗 MacanAuto</strong>
     <small>Gestão Inteligente de Frotas</small>
   </div>
-  <span class="pill">DEMONSTRAÇÃO v0.3</span>
+  <span class="pill">DEMONSTRAÇÃO v0.4.12</span>
 </header>
 
 <div class="shell">
@@ -507,7 +507,7 @@
     </section>
 
     <p class="footer">
-      MacanAuto · v0.3 · Demonstração local ·
+      MacanAuto · v0.4.12 · Demonstração local ·
       Marrom #522A00 · Verde #6FB64E
     </p>
   </main>
@@ -5203,6 +5203,104 @@ renderFleet();
 
   pintarFrota();
   atualizarOpcoes();
+})();
+
+
+/* MacanAuto v0.4.12 — SIMULACAO LOCAL DE PERFIS (nao e autenticacao) */
+(() => {
+  'use strict';
+  const KEY = 'macanauto_demo_usuarios_v0412';
+  const ROLE = 'macanauto_demo_perfil_v0412';
+  const $ = id => document.getElementById(id);
+  const roles = {admin:'Administrador',gerente:'Gerente',usuario:'Usuário'};
+  let perfil = sessionStorage.getItem(ROLE) || 'admin';
+  if (!roles[perfil]) perfil='admin';
+  function ler() { try { const a=JSON.parse(localStorage.getItem(KEY)||'[]'); return Array.isArray(a)?a:[]; } catch { return []; } }
+  function salvar(a) { localStorage.setItem(KEY,JSON.stringify(a)); }
+  function aviso(txt) { const el=$('us-aviso'); if(el) el.textContent=txt; }
+  const css=document.createElement('style');
+  css.textContent=`
+    #us-controle { display:flex;align-items:center;gap:9px;flex-wrap:wrap;color:white;font-size:.85rem; }
+    #us-perfil { border:1px solid #d5c5b4;border-radius:9px;padding:8px;background:#fff;color:#522a00; }
+    #us-gestao .us-row { display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px;border-bottom:1px solid #eee7df;flex-wrap:wrap; }
+    #us-gestao input,#us-gestao select { border:1px solid #d9d2c9;border-radius:9px;padding:10px;max-width:100%; }
+    #us-gestao .us-form { display:flex;gap:10px;flex-wrap:wrap;align-items:end; }
+    #us-gestao .us-form label { display:grid;gap:6px;font-weight:600; }
+    body.us-usuario #fleet .toolbar button.primary, body.us-usuario #vehicles .vehicle-actions,body.us-usuario #vehicle-form { display:none!important; }
+    body.us-usuario #ba-v0410 { display:none!important; }
+    @media(max-width:720px){#us-controle {width:100%;}header {flex-wrap:wrap;} }
+  `;
+  document.head.appendChild(css);
+  const h=document.querySelector('header');
+  const ctrl=document.createElement('div');ctrl.id='us-controle';
+  ctrl.innerHTML='<label for="us-perfil">Perfil de teste:</label><select id="us-perfil"><option value="admin">Administrador</option><option value="gerente">Gerente</option><option value="usuario">Usuário</option></select>';
+  h.appendChild(ctrl);
+  const nav=document.querySelector('nav');
+  const b=document.createElement('button');b.dataset.page='usuarios';b.textContent='👥 Usuários';
+  nav.appendChild(b);
+  const main=document.querySelector('main');
+  const section=document.createElement('section');section.id='usuarios';section.className='hidden';
+  section.innerHTML=`<h1>Gestão de Usuários</h1><p class="muted">Simulação local: os perfis e cadastros são armazenados apenas neste navegador. Não utilize dados reais nesta demonstração.</p>
+    <div class="card" id="us-gestao"><h2>Cadastros</h2><div class="us-form">
+    <label>Nome de teste<input id="us-nome" maxlength="80" placeholder="Ex.: Usuário Teste 01"></label>
+    <label>Perfil<select id="us-tipo"><option value="usuario">Usuário</option><option value="gerente">Gerente</option></select></label>
+    <button class="primary" id="us-criar" type="button">Cadastrar</button></div>
+    <p id="us-aviso" role="status" class="muted"></p><div id="us-lista"></div></div>`;
+  main.appendChild(section);
+  function renderUsers(){
+    const a=ler(), lista=$('us-lista');lista.replaceChildren();
+    const permitido=perfil!=='usuario';
+    $('us-gestao').style.display=permitido?'':'none';
+    $('us-tipo').querySelector('[value="gerente"]').disabled=perfil!=='admin';
+    if(perfil!=='admin') $('us-tipo').value='usuario';
+    if(!a.length){const p=document.createElement('p');p.className='muted';p.textContent='Nenhum usuário de teste cadastrado.';lista.append(p);}
+    a.forEach(u=>{
+      const row=document.createElement('div');row.className='us-row';
+      const label=document.createElement('span');label.textContent=u.nome+' · '+roles[u.perfil]+' · '+(u.ativo?'Ativo':'Desativado');
+      row.append(label);
+      if(perfil==='admin'||(perfil==='gerente'&&u.perfil==='usuario')){
+        const btn=document.createElement('button');btn.className='secondary';btn.textContent=u.ativo?'Desativar':'Reativar';
+        btn.addEventListener('click',()=>{
+          const atual=ler(),x=atual.find(x=>x.id===u.id);if(!x)return;
+          if(perfil==='usuario'||(perfil==='gerente'&&x.perfil!=='usuario'))return;
+          x.ativo=!x.ativo;salvar(atual);renderUsers();aviso('Cadastro atualizado. Histórico preservado.');
+        });row.append(btn);
+      }
+      lista.append(row);
+    });
+  }
+  $('us-criar').addEventListener('click',()=>{
+    if(perfil==='usuario')return;
+    const nome=$('us-nome').value.trim(), tipo=$('us-tipo').value;
+    if(!nome){aviso('Informe um nome de teste.');return;}
+    if(!['usuario','gerente'].includes(tipo)||(perfil==='gerente'&&tipo!=='usuario')){aviso('Perfil não permitido.');return;}
+    const a=ler();a.push({id:'US-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),nome,perfil:tipo,ativo:true});
+    salvar(a);$('us-nome').value='';renderUsers();aviso('Cadastro de teste criado.');
+  });
+  function aplicar(){
+    document.body.classList.toggle('us-usuario',perfil==='usuario');
+    $('us-perfil').value=perfil;
+    b.style.display=perfil==='usuario'?'none':'';
+    if(perfil==='usuario'&&!section.classList.contains('hidden'))go('dashboard');
+    renderUsers();
+  }
+  $('us-perfil').addEventListener('change',e=>{perfil=e.target.value;sessionStorage.setItem(ROLE,perfil);aplicar();});
+  b.addEventListener('click',()=>{if(perfil!=='usuario')go('usuarios');});
+  // Impede ações administrativas pela interface na simulação, inclusive botões criados dinamicamente.
+  document.addEventListener('click',e=>{
+    if(perfil!=='usuario')return;
+    const alvo=e.target.closest('button');if(!alvo)return;
+    const bloqueado=alvo.closest('#ba-v0410,#vehicle-form,#vehicles .vehicle-actions') ||
+      alvo.matches('#fleet .toolbar button.primary') ||
+      (alvo.hasAttribute('onclick')&&/openVehicleForm|editVehicle|deleteVehicle/.test(alvo.getAttribute('onclick')));
+    if(bloqueado){e.preventDefault();e.stopImmediatePropagation();alert('Ação reservada à gerência e administração (simulação).');}
+  },true);
+  // Verificação adicional para chamadas diretas dos controles de frota existentes.
+  for(const nome of ['openVehicleForm','editVehicle','deleteVehicle','saveVehicle']){
+    const antigo=window[nome];if(typeof antigo!=='function')continue;
+    window[nome]=function(...args){if(perfil==='usuario'){alert('Ação não permitida para Usuário (simulação).');return;}return antigo.apply(this,args);};
+  }
+  aplicar();
 })();
 
 </script>
