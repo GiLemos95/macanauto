@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#522a00">
-  <title>MacanAuto | Demonstração v0.4.13</title>
+  <title>MacanAuto | Demonstração v0.4.15</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -264,6 +264,62 @@
       .number { font-size: 1.6rem; }
     }
   </style>
+
+  <!-- v0.4.15: aprimoramentos responsivos; sem alterações na lógica de negócios -->
+  <style id="macanauto-responsive-v0415">
+    html { -webkit-text-size-adjust: 100%; }
+    body { min-width: 0; overflow-x: hidden; }
+    .shell, .shell > main, .card, section { min-width: 0; }
+    main { min-width: 0; }
+    img, video, canvas, svg { max-width: 100%; }
+    input, select, textarea { min-width: 0; }
+    .card, .toolbar, .two, .vehicle-list { max-width: 100%; }
+    .card { overflow-wrap: anywhere; }
+    table { min-width: max-content; }
+    .card:has(> table), section:has(> table) { overflow-x: auto; }
+    :focus-visible { outline: 3px solid #6fb64e; outline-offset: 2px; }
+    @media (max-width: 850px) {
+      .shell { display: block; min-height: auto; }
+      nav { position: sticky; top: 0; z-index: 30; width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+      nav button { flex: 0 0 auto; min-height: 44px; }
+      main { max-width: 100%; padding: 18px; }
+      header { flex-wrap: wrap; }
+      .toolbar { gap: 10px; }
+    }
+    @media (max-width: 600px) {
+      header { padding: 14px 16px; gap: 10px; }
+      header strong { font-size: 1.2rem; }
+      header .pill { font-size: .68rem; }
+      main { padding: 14px 12px 28px; }
+      h1 { font-size: clamp(1.4rem, 6vw, 1.85rem); line-height: 1.2; }
+      h2 { font-size: 1.15rem; }
+      .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+      .card { padding: 14px; border-radius: 14px; }
+      .number { font-size: clamp(1.4rem, 6vw, 1.9rem); }
+      .vehicle-list, .two { grid-template-columns: minmax(0, 1fr); }
+      .toolbar { align-items: stretch; }
+      .toolbar input, .toolbar select { flex: 1 1 100%; max-width: none; }
+      .toolbar button { flex: 1 1 auto; min-height: 44px; }
+      button, .primary, .secondary, .danger { min-height: 42px; }
+      input, select, textarea { font-size: 16px; }
+      #us-controle { flex-wrap: wrap; }
+      #us-gestao .us-form { align-items: stretch; }
+      #us-gestao .us-form label { flex: 1 1 100%; }
+      #us-filtros input, #us-filtros select, #rt-filtros input, #rt-filtros select { max-width: 100%; min-width: 0; }
+      #rt-filtros { display: flex; flex-wrap: wrap; gap: 9px; }
+      #rt-filtros > * { flex: 1 1 180px; }
+      .footer { line-height: 1.5; }
+    }
+    @media (max-width: 360px) {
+      main { padding-inline: 9px; }
+      .cards { gap: 6px; }
+      .cards .card { padding: 10px; }
+      .cards .muted { font-size: .78rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+    }
+  </style>
 </head>
 
 <body>
@@ -272,7 +328,7 @@
     <strong>🚗 MacanAuto</strong>
     <small>Gestão Inteligente de Frotas</small>
   </div>
-  <span class="pill">DEMONSTRAÇÃO v0.4.13</span>
+  <span class="pill">DEMONSTRAÇÃO v0.4.15</span>
 </header>
 
 <div class="shell">
