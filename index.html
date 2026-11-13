@@ -2887,7 +2887,8 @@ renderFleet();
       el(id).value = '';
     });
 
-    el('vu-foto').value = '';
+    // As quatro fotos são controladas pelo painel fotográfico v0.4.17.
+    // Não acessar o campo único removido nesta versão.
     if (antigo) antigo.value = '';
   }
 
@@ -2914,7 +2915,11 @@ renderFleet();
 
     const kmTexto = texto('vu-km');
     const km = Number(kmTexto);
-    const foto = el('vu-foto').files[0];
+    const fotosObrigatorias = ['frente', 'traseira', 'esquerda', 'direita'];
+    const fotosPendentes = fotosObrigatorias.filter(angulo => {
+      const area = el('vu-preview-' + angulo);
+      return !area || !area.querySelector('img');
+    });
 
     if (
       kmTexto === '' ||
@@ -2925,10 +2930,10 @@ renderFleet();
       return;
     }
 
-    // Mantem a exigencia provisoria da versao anterior.
-    // A fotografia nao e armazenada.
-    if (!foto || !foto.type.startsWith('image/')) {
-      resultado('Selecione uma imagem de teste.');
+    // Exige os quatro ângulos registrados no painel fotográfico.
+    // As imagens ainda não são armazenadas permanentemente.
+    if (fotosPendentes.length) {
+      resultado('Adicione as fotografias obrigatórias: ' + fotosPendentes.join(', ') + '.');
       return;
     }
 
