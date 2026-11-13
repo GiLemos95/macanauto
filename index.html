@@ -263,7 +263,20 @@
       .card { padding: 14px; }
       .number { font-size: 1.6rem; }
     }
-  </style>
+  
+/* MacanAuto v0.4.17 - fotos da vistoria */
+.vu-photo-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:12px 0; }
+.vu-photo-card { border:1px solid #d7d7d7; border-radius:12px; padding:12px; min-width:0; }
+.vu-photo-actions { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }
+.vu-photo-action { display:inline-flex; align-items:center; justify-content:center; padding:9px 12px; border:1px solid #522a00; border-radius:9px; cursor:pointer; color:#522a00; font-weight:600; }
+.vu-photo-action:focus-within { outline:2px solid #6fb64e; outline-offset:2px; }
+.vu-photo-preview { min-height:95px; display:flex; align-items:center; justify-content:center; background:#f7f5f2; border-radius:8px; color:#666; overflow:hidden; }
+.vu-photo-preview img { display:block; width:100%; max-height:220px; object-fit:contain; }
+.vu-remove-photo { margin-top:8px; }
+.vu-extra-item { display:inline-flex; align-items:center; gap:8px; margin:6px; }
+.vu-extra-item img { width:90px; height:90px; object-fit:cover; border-radius:8px; }
+@media(max-width:620px) { .vu-photo-grid { grid-template-columns:1fr; } .vu-photo-action { flex:1; } }
+</style>
 
   <!-- v0.4.16: aprimoramentos responsivos; sem alterações na lógica de negócios -->
   <style id="macanauto-responsive-v0415">
@@ -1267,7 +1280,7 @@ renderFleet();
     <h2>Vistoria veicular</h2>
     <p class="muted">
       Demonstração local. Use somente dados fictícios.
-      Fotografias não serão armazenadas.
+      Fotografias obrigatórias na retirada e devolução. As imagens são usadas apenas nesta sessão e não são armazenadas; use somente dados fictícios.
     </p>
 
     <div class="two">
@@ -1332,11 +1345,32 @@ renderFleet();
           placeholder="Informe a quilometragem">
       </div>
 
-      <div class="field">
-        <label for="vu-foto">Fotografia de teste</label>
-        <input id="vu-foto" type="file" accept="image/*"
-          capture="environment">
+    </div>
+
+    <div class="field" id="vu-painel-fotos">
+      <label>Registro fotográfico obrigatório</label>
+      <p class="muted">Adicione quatro fotografias em cada operação. No celular, você pode usar a câmera ou a galeria. Confira as imagens antes de confirmar.</p>
+      <div class="vu-photo-grid" id="vu-photo-grid">
+        ${[['frente','Frente'],['traseira','Traseira'],['esquerda','Lateral esquerda'],['direita','Lateral direita']].map(([id,nome]) => `
+          <div class="vu-photo-card">
+            <strong>${nome} *</strong>
+            <div class="vu-photo-actions">
+              <label class="vu-photo-action">📷 Câmera<input type="file" id="vu-camera-${id}" accept="image/*" capture="environment" data-angulo="${id}" hidden></label>
+              <label class="vu-photo-action">🖼️ Galeria<input type="file" id="vu-galeria-${id}" accept="image/*" data-angulo="${id}" hidden></label>
+            </div>
+            <div class="vu-photo-preview" id="vu-preview-${id}">Nenhuma foto selecionada</div>
+            <button class="secondary vu-remove-photo" type="button" data-remove-angulo="${id}" hidden>Remover foto</button>
+          </div>`).join('')}
       </div>
+      <div class="vu-photo-card vu-photo-extra">
+        <strong>Fotografias adicionais (avarias ou detalhes)</strong>
+        <div class="vu-photo-actions">
+          <label class="vu-photo-action">📷 Câmera<input id="vu-camera-extra" type="file" accept="image/*" capture="environment" data-extra hidden></label>
+          <label class="vu-photo-action">🖼️ Galeria<input id="vu-galeria-extra" type="file" accept="image/*" multiple data-extra hidden></label>
+        </div>
+        <div id="vu-extras-list" class="muted">Nenhuma foto adicional</div>
+      </div>
+      <p id="vu-fotos-status" role="status" class="muted">0 de 4 fotografias obrigatórias selecionadas.</p>
     </div>
 
     <div class="field">
@@ -1372,6 +1406,74 @@ renderFleet();
   const veiculo = campo('vu-veiculo');
   const botao = campo('vu-confirmar');
   const resultado = campo('vu-resultado');
+
+  // Fotografias são mantidas somente em memória enquanto a tela está aberta.
+  // Não salvar blobs, URLs temporárias ou imagens no localStorage.
+  const angulos = ['frente', 'traseira', 'esquerda', 'direita'];
+  const fotos = Object.create(null);
+  let fotosExtras = [];
+  const urlsTemporarias = new Set();
+  const criarUrl = file => { const url = URL.createObjectURL(file); urlsTemporarias.add(url); return url; };
+  const liberarUrl = url => { if (url) { URL.revokeObjectURL(url); urlsTemporarias.delete(url); } };
+  function atualizarFotos() {
+    for (const angulo of angulos) {
+      const area = campo('vu-preview-' + angulo);
+      area.replaceChildren();
+      const foto = fotos[angulo];
+      if (foto) {
+        const img = document.createElement('img');
+        img.src = foto.url;
+        img.alt = 'Pré-visualização: ' + angulo;
+        area.appendChild(img);
+      } else area.textContent = 'Nenhuma foto selecionada';
+      const remover = document.querySelector('[data-remove-angulo="' + angulo + '"]');
+      remover.hidden = !foto;
+    }
+    const extras = campo('vu-extras-list');
+    extras.replaceChildren();
+    if (!fotosExtras.length) extras.textContent = 'Nenhuma foto adicional';
+    fotosExtras.forEach((foto, indice) => {
+      const item = document.createElement('div'); item.className = 'vu-extra-item';
+      const img = document.createElement('img'); img.src = foto.url; img.alt = 'Foto adicional ' + (indice + 1);
+      const remover = document.createElement('button'); remover.type = 'button'; remover.className = 'secondary'; remover.textContent = 'Remover';
+      remover.addEventListener('click', () => { liberarUrl(foto.url); fotosExtras.splice(indice, 1); atualizarFotos(); });
+      item.append(img, remover); extras.appendChild(item);
+    });
+    const total = angulos.filter(angulo => Boolean(fotos[angulo])).length;
+    campo('vu-fotos-status').textContent = total + ' de 4 fotografias obrigatórias selecionadas.';
+  }
+  function limparFotos() {
+    for (const angulo of angulos) { if (fotos[angulo]) liberarUrl(fotos[angulo].url); delete fotos[angulo]; }
+    fotosExtras.forEach(foto => liberarUrl(foto.url)); fotosExtras = [];
+    campo('vu-painel-fotos').querySelectorAll('input[type="file"]').forEach(input => { input.value = ''; });
+    atualizarFotos();
+  }
+  campo('vu-painel-fotos').addEventListener('change', event => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.type !== 'file') return;
+    const arquivos = [...(input.files || [])];
+    if (arquivos.some(file => !file.type.startsWith('image/'))) { resultado.textContent = 'Selecione somente arquivos de imagem.'; input.value = ''; return; }
+    if (input.hasAttribute('data-extra')) {
+      for (const file of arquivos) fotosExtras.push({ file, url: criarUrl(file) });
+    } else {
+      const angulo = input.dataset.angulo;
+      if (angulos.includes(angulo) && arquivos[0]) {
+        if (fotos[angulo]) liberarUrl(fotos[angulo].url);
+        fotos[angulo] = { file: arquivos[0], url: criarUrl(arquivos[0]) };
+      }
+    }
+    input.value = '';
+    resultado.textContent = '';
+    atualizarFotos();
+  });
+  campo('vu-painel-fotos').addEventListener('click', event => {
+    const botaoRemover = event.target.closest('[data-remove-angulo]');
+    if (!botaoRemover) return;
+    const angulo = botaoRemover.dataset.removeAngulo;
+    if (fotos[angulo]) { liberarUrl(fotos[angulo].url); delete fotos[angulo]; atualizarFotos(); }
+  });
+  window.addEventListener('pagehide', () => urlsTemporarias.forEach(url => URL.revokeObjectURL(url)));
+  atualizarFotos();
 
   function lerRegistros() {
     const valor = JSON.parse(localStorage.getItem(CHAVE) || '[]');
@@ -1440,11 +1542,13 @@ renderFleet();
   }
 
   tipo.addEventListener('change', () => {
+    limparFotos();
     resultado.textContent = '';
     atualizarTela();
   });
 
   veiculo.addEventListener('change', () => {
+    limparFotos();
     resultado.textContent = '';
     atualizarTela();
   });
@@ -1475,7 +1579,7 @@ renderFleet();
 
     const kmTexto = campo('vu-km').value.trim();
     const km = Number(kmTexto);
-    const foto = campo('vu-foto').files[0];
+    const fotosFaltantes = angulos.filter(angulo => !fotos[angulo]);
     const checklist = campo('vu-checklist').value;
     const observacoes = campo('vu-observacoes').value.trim();
 
@@ -1489,9 +1593,8 @@ renderFleet();
       return;
     }
 
-    if (!foto || !foto.type.startsWith('image/')) {
-      resultado.textContent =
-        'Selecione uma fotografia de imagem.';
+    if (fotosFaltantes.length) {
+      resultado.textContent = 'Adicione as quatro fotografias obrigatórias antes de confirmar. Faltam: ' + fotosFaltantes.join(', ') + '.';
       return;
     }
 
@@ -1584,7 +1687,7 @@ renderFleet();
         kmInicial: km,
         checklistRetirada: checklist,
         observacoes: observacoes,
-        fotoSelecionada: true,
+        fotosConferidasNaSessao: true,
         dataRetirada: new Date().toISOString(),
         situacao: 'Em uso'
       };
@@ -1646,7 +1749,7 @@ renderFleet();
         ' agora está Em uso.';
 
     campo('vu-km').value = '';
-    campo('vu-foto').value = '';
+    limparFotos();
     campo('vu-checklist').value = '';
     campo('vu-observacoes').value = '';
   });
@@ -2955,7 +3058,7 @@ renderFleet();
         kmInicial: km,
         observacoes,
         checklistRetirada: checklist,
-        fotoSelecionada: true,
+        fotosConferidasNaSessao: true,
         dataRetirada: new Date().toISOString(),
         situacao: 'Em uso'
       };

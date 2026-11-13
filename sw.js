@@ -1,5 +1,5 @@
-/* MacanAuto v0.4.16 — cache somente do aplicativo, nunca de dados pessoais. */
-const CACHE = 'macanauto-shell-v0.4.16';
+/* MacanAuto v0.4.17 — cache somente do aplicativo, nunca de dados pessoais. */
+const CACHE = 'macanauto-shell-v0.4.17';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
