@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#522a00">
-  <title>MacanAuto | Demonstração v0.4.15</title>
+  <title>MacanAuto | Demonstração v0.4.16</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -265,7 +265,7 @@
     }
   </style>
 
-  <!-- v0.4.15: aprimoramentos responsivos; sem alterações na lógica de negócios -->
+  <!-- v0.4.16: aprimoramentos responsivos; sem alterações na lógica de negócios -->
   <style id="macanauto-responsive-v0415">
     html { -webkit-text-size-adjust: 100%; }
     body { min-width: 0; overflow-x: hidden; }
@@ -320,6 +320,14 @@
       *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
     }
   </style>
+  <meta name="application-name" content="MacanAuto">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="MacanAuto">
+  <meta name="description" content="Gestão de frota e movimentações de veículos MacanAuto.">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 </head>
 
 <body>
@@ -328,7 +336,7 @@
     <strong>🚗 MacanAuto</strong>
     <small>Gestão Inteligente de Frotas</small>
   </div>
-  <span class="pill">DEMONSTRAÇÃO v0.4.15</span>
+  <span class="pill">DEMONSTRAÇÃO v0.4.16</span>
 </header>
 
 <div class="shell">
@@ -5492,6 +5500,16 @@ renderFleet();
   renderLog();
 })();
 
+</script>
+<script>
+  // PWA: instala o service worker apenas em HTTPS/localhost, sem alterar os dados locais.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js').catch(function (error) {
+        console.warn('MacanAuto: modo instalável indisponível neste navegador.', error);
+      });
+    });
+  }
 </script>
 </body>
 </html>
